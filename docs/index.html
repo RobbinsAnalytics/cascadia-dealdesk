@@ -6,7 +6,11 @@
 <title>Agreement vs. quoted price — Cascadia Deal Desk</title>
 <meta name="description" content="Pricing governance and margin leakage analytics on synthetic data. An independent portfolio project.">
 <link rel="stylesheet" href="assets/cascadia-dealdesk.css">
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<!-- ECharts is vendored, not fetched. The JSON is already inlined so the page
+     makes no runtime data call; a CDN script tag would have reintroduced a
+     network dependency the architecture exists to avoid. Works offline, from
+     file://, and behind a proxy that blocks public CDNs. -->
+<script src="assets/echarts.min.js"></script>
 <script src="assets/cascadia-echarts-theme.js"></script>
 </head>
 <body>
@@ -395,13 +399,15 @@
   // ONLY. It must not state the finding or what it means: blind readers rank
   // domain interpretation among the LEAST useful description content, the
   // inverse of sighted readers. The finding lives in the visible title.
-  function describe(entry, l1, l2) {
-    cascadiaAccessible(entry.el, {
-      label: l1 + ' ' + l2,
-      tableId: null,
-      tableExempt: true     // the table is in the sibling <details>, wired below
-    });
-    entry.el.setAttribute('aria-label', l1 + ' ' + l2);
+  // L1 construction + L2 statistics + L3 shape. NOT L4 interpretation: blind
+  // readers rank domain interpretation among the LEAST useful description
+  // content, the inverse of sighted readers (Lundgard & Satyanarayan 2022).
+  // L3 — trend, cluster, outlier — is the part a data table genuinely cannot
+  // carry, and it was missing from v1 of these pages.
+  function describe(entry, l1, l2, l3) {
+    var label = l1 + ' ' + l2 + (l3 ? ' ' + l3 : '');
+    cascadiaAccessible(entry.el, { label: label, tableId: null, tableExempt: true });
+    entry.el.setAttribute('aria-label', label);
   }
 
   // Rule 4.2 + 4.4 — one strip, source and as-of frozen at build, filter
@@ -536,9 +542,23 @@
       // rather than one emphasis. Sentiment maps to the slots — Evergreen
       // favourable, Madrona unfavourable — and every series is directly
       // labelled, so colour is never the only channel (Rule 2.3.2).
-      title: titleFor(cStatus, 
-        'Off-agreement and uncovered lines held near a quarter of all quoting for two years',
-        'Quote lines by match status, monthly, Aug 2024 – Jul 2026'),
+      title: (function () {
+        // A naive reader measured the non-green share at about a fifth and
+        // flagged both "near a quarter" (overstated) and "held" (the monthly
+        // share varies 2.5x, which a stacked form actively hides). State the
+        // level and the range, and claim only the trend the plot shows.
+        var shares = order.map(function (m) {
+          var t = months[m].to + months[m].off + months[m].none;
+          return t ? (months[m].off + months[m].none) / t : null;
+        }).filter(function (v) { return v != null; });
+        var lo = Math.min.apply(null, shares), hi = Math.max.apply(null, shares);
+        var overall = (msc.priced_off_agreement + msc.no_governing_agreement) / LINES.length;
+        return titleFor(cStatus,
+          'Off-agreement and uncovered lines ran ' + pct(overall, 0) +
+          ' of quoting and never trended down',
+          'Quote lines by match status, monthly · monthly share ranges ' +
+          pct(lo, 0) + ' to ' + pct(hi, 0) + ' · Aug 2024 \u2013 Jul 2026');
+      })(),
       grid: { left: 8, right: 118, top: LAST_TOP, bottom: 26, containLabel: true },
       tooltip: {
         trigger: 'axis', axisPointer: { type: 'shadow' },
@@ -581,7 +601,10 @@
       '. Monthly line counts range from ' + Math.min.apply(null, order.map(function (m) {
         return months[m].to + months[m].off + months[m].none; })) + ' to ' +
       Math.max.apply(null, order.map(function (m) {
-        return months[m].to + months[m].off + months[m].none; })) + '.');
+        return months[m].to + months[m].off + months[m].none; })) + '.',
+      'Shape: total volume rises across the period with a peak around month 15 and a ' +
+      'seasonal dip mid-series. The off-agreement and no-agreement bands hold a roughly ' +
+      'constant share throughout rather than narrowing.');
     renderTable(cStatus.tableHost,
       [{ label: 'Month', get: function (r) { return r.m; } },
        { label: 'To agreement', num: true, get: function (r) { return num(months[r.m].to); } },
@@ -639,7 +662,9 @@
       'Horizontal bar chart. Margin given up in US dollars by exposure state, three categories, zero baseline.',
       'Realized ' + usdFull(byState.realized) + ' across ' + cntState.realized + ' lines; ' +
       'closed lost ' + usdFull(byState.closed_lost) + ' across ' + cntState.closed_lost + ' lines; ' +
-      'open ' + usdFull(byState.open) + ' across ' + cntState.open + ' lines. Total ' + usdFull(totalLeak) + '.');
+      'open ' + usdFull(byState.open) + ' across ' + cntState.open + ' lines. Total ' + usdFull(totalLeak) + '.',
+      'Shape: the realized bar is roughly nine times the open bar; the three categories are ' +
+      'strongly unequal rather than comparable.');
     renderTable(cExp.tableHost,
       [{ label: 'Exposure state', get: function (r) { return r.label; } },
        { label: 'Margin given up', num: true, get: function (r) { return usdFull(r.v); } },
@@ -673,10 +698,10 @@
     { key: 'customer_name', label: 'Customer' },
     { key: 'product_part_number', label: 'Part' },
     { key: 'quote_date', label: 'Quoted' },
-    { key: 'agreed_price', label: 'Agreed', num: true, fmt: usdFull },
+    { key: 'agreed_price', label: 'Agreed', num: true, fmt: usdFull, fold: true },
     { key: 'quoted_price', label: 'Quoted price', num: true, fmt: usdFull },
     { key: 'price_variance_usd', label: 'Variance $', num: true, fmt: usdFull, neg: true },
-    { key: 'price_variance_pct', label: 'Variance %', num: true, fmt: function (v) { return pct(v, 1); }, neg: true },
+    { key: 'price_variance_pct', label: 'Variance %', num: true, fmt: function (v) { return pct(v, 1); }, neg: true, fold: true },
     { key: 'margin_impact_usd', label: 'Margin given up', num: true, fmt: usdFull },
     { key: 'rep_name', label: 'Rep' },
     { key: 'exposure_state', label: 'State' },
@@ -705,6 +730,7 @@
 
   function render() {
     var f = currentFilter();
+    writeHash();
     elThrOut.textContent = usd(f.threshold);
 
     // scope = lines passing customer + date, before the threshold
@@ -788,7 +814,7 @@
       var restV = arr.slice(10).reduce(function (s, r) { return s + r.v; }, 0);
       var restN = arr.length - top.length;
       var plot = top.slice();
-      if (restN > 0) plot.push({ name: 'All other ' + restN + ' customers', v: restV, rest: true });
+      if (restN > 0) plot.push({ name: '\u25B8 pooled: ' + restN + ' more customers', v: restV, rest: true });
 
       if (!arr.length) {
         cCust.chart.clear();
@@ -817,8 +843,10 @@
             ? (arr.length === 1 ? 'One customer carries all of the exposure shown'
                                 : num(arr.length) + ' customers carry the exposure shown')
             : num(n80) + ' of ' + num(arr.length) + ' ' + plural(arr.length, 'customer') +
-              ' ' + (n80 === 1 ? 'accounts' : 'account') + ' for 80% of the exposure shown',
-          'Margin given up by customer, USD, top 10 and remainder'),
+              ' ' + (n80 === 1 ? 'accounts' : 'account') + ' for ' +
+              pct(run / sumShown, 0) + ' of the exposure shown',
+          'Margin given up by customer, USD · saturated bars make up that share; ' +
+          'the tail and the pooled remainder are grey'),
         grid: { left: 8, right: 104, top: LAST_TOP, bottom: 22, containLabel: true },
         tooltip: {
           trigger: 'item',
@@ -840,9 +868,9 @@
           label: { show: true, position: 'right', color: C.basalt, fontSize: 12,
                    formatter: function (p) { return usd(p.value); } },
           markPoint: cascadiaAnnotation(
-            'Top account alone is ' + pct(plot[0].v / sumShown, 0) + ' of exposure',
-            { color: C.evergreen, coord: [plot[0].v, 0], position: 'bottom',
-              distance: 20, width: 180, align: 'left' })
+            'Top account: ' + pct(plot[0].v / sumShown, 0),
+            { color: C.evergreen, coord: [plot[0].v, 0], position: 'insideRight',
+              distance: 10, width: 120, align: 'right' })
         }]
       });
       strip(cCust, vt);
@@ -850,7 +878,9 @@
         'Horizontal bar chart. Margin given up in US dollars by customer, sorted descending, zero baseline, ' +
         plot.length + ' bars.',
         'Range ' + usdFull(plot[plot.length - 1].v) + ' to ' + usdFull(plot[0].v) +
-        '. Total shown ' + usdFull(sumShown) + ' across ' + arr.length + ' customers.');
+        '. Total shown ' + usdFull(sumShown) + ' across ' + arr.length + ' customers.',
+        'Shape: a steep head and a long tail. The largest bar is about twice the second, ' +
+        'and the distribution decays smoothly after the third.');
       renderTable(cCust.tableHost,
         [{ label: 'Customer', get: function (r) { return r.name; } },
          { label: 'Margin given up', num: true, get: function (r) { return usdFull(r.v); } },
@@ -915,8 +945,8 @@
           }),
           label: { show: true, position: 'right', color: C.basalt, fontSize: 12 },
           markPoint: cascadiaAnnotation('Concentrated, not spread', {
-            color: C.madrona, coord: [arr[0].n, 0], position: 'bottom', distance: 20,
-            width: 150, align: 'right' })
+            color: C.madrona, coord: [arr[0].n, 0], position: 'insideRight',
+            distance: 10, width: 150, align: 'right' })
         }]
       });
       strip(cRep, vt);
@@ -932,6 +962,11 @@
     })();
 
     // ---- Chart: threshold calibration (distribution) ----
+    // TWO STACKED PANELS sharing the threshold x-axis. Count and dollars are
+    // different units, so Rule 2.2 forbids them sharing a value axis — and the
+    // calibration argument genuinely needs both: count is how many exceptions
+    // the team has to work, dollars is how much they would catch. Showing only
+    // the count argued for calibration while hiding half the evidence.
     (function () {
       var steps = [0, 1000, 2500, 5000, 7500, 10000, 15000, 20000, 25000, 30000, 40000, 50000];
       var vals = scopeLeak.map(leakUsd);
@@ -941,71 +976,90 @@
       });
       var iNow = 0;
       for (var i = 0; i < steps.length; i++) if (steps[i] <= f.threshold) iNow = i;
-
-      // Rule 1.3 — this is the one line chart on the page, so its shape is
-      // banked rather than inherited from a stylesheet default.
-      applyHeight(cThr, bankHeight(counts, cThr.el, 210, 300));
       var atNow = counts[iNow], dollarsNow = dollars[iNow];
       var shareLines = vals.length ? atNow / vals.length : 0;
       var shareDollars = sumScope ? dollarsNow / sumScope : 0;
 
+      applyHeight(cThr, 360);
       cThr.chart.setOption({ series: [] }, true);
       cThr.chart.setOption({
-        title: titleFor(cThr, 
+        title: titleFor(cThr,
           vals.length === 0
             ? 'No off-agreement lines to calibrate against'
             : (f.threshold === 0
-                ? 'Half the exposure sits in the ' +
-                  (function () {
-                    var half = 0, c = 0, sorted = vals.slice().sort(function (a, b) { return b - a; });
-                    for (var j = 0; j < sorted.length; j++) { half += sorted[j]; c++; if (half >= 0.5 * sumScope) break; }
-                    return num(c);
-                  })() + ' largest lines'
-                : pct(shareLines, 0) + ' of exceptions carry ' + pct(shareDollars, 0) + ' of the money'),
-          'Lines surviving each materiality threshold, and the dollars they carry'),
-        grid: { left: 8, right: 96, top: LAST_TOP, bottom: 28, containLabel: true },
+                ? 'Raising the threshold drops exception count far faster than it drops dollars'
+                : 'At ' + usd(f.threshold) + ', ' + pct(shareLines, 0) + ' of exceptions carry ' +
+                  pct(shareDollars, 0) + ' of the money'),
+          'Lines surviving each materiality threshold (top) and the exposure they carry (bottom)'),
+        // two grids, one x-axis value, stacked. Rule 2.2.
+        grid: [
+          { left: 8, right: 96, top: LAST_TOP, height: 96, containLabel: true },
+          { left: 8, right: 96, top: LAST_TOP + 138, height: 96, containLabel: true }
+        ],
+        axisPointer: { link: [{ xAxisIndex: 'all' }] },
         tooltip: {
           trigger: 'axis',
           formatter: function (ps) {
             var i = ps[0].dataIndex;
             return '<strong>Threshold ' + usdFull(steps[i]) + '</strong><br>' +
-                   num(counts[i]) + ' ' + plural(counts[i], 'line') + ' survive<br>' +
+                   num(counts[i]) + ' ' + plural(counts[i], 'line') + ' survive' +
+                   (vals.length ? ' (' + pct(counts[i] / vals.length) + ' of exceptions)' : '') + '<br>' +
                    usdFull(dollars[i]) + ' still visible' +
-                   (sumScope ? '<br>' + pct(dollars[i] / sumScope) + ' of total exposure' : '');
+                   (sumScope ? ' (' + pct(dollars[i] / sumScope) + ' of exposure)' : '');
           }
         },
-        xAxis: { type: 'category', data: steps.map(function (s) { return usd(s); }) },
-        yAxis: { type: 'value' },
-        series: [{
-          name: 'Lines surviving', type: 'line', data: counts,
-          lineStyle: { width: 2, color: C.evergreen }, itemStyle: { color: C.evergreen },
-          showSymbol: true, symbolSize: 5,
-          markPoint: vals.length ? cascadiaAnnotation(
-            'At ' + usd(steps[iNow]) + ': ' + num(atNow) + ' ' + plural(atNow, 'line') +
-            ', ' + usd(dollarsNow),
-            { color: C.evergreen, coord: [iNow, atNow],
-              // keep the note inside the plot as the reader drags the slider
-              position: iNow <= 3 ? 'right' : 'left',
-              distance: 14, width: 170, align: iNow <= 3 ? 'left' : 'right' }) : undefined,
-          endLabel: { show: false }
-        }]
+        xAxis: [
+          { type: 'category', gridIndex: 0, data: steps.map(function (v) { return usd(v); }),
+            axisLabel: { show: false } },
+          { type: 'category', gridIndex: 1, data: steps.map(function (v) { return usd(v); }) }
+        ],
+        yAxis: [
+          { type: 'value', gridIndex: 0, name: 'exceptions', nameLocation: 'end', nameGap: 8,
+            nameTextStyle: { color: C.slateMoss, fontSize: 12, align: 'left' } },
+          { type: 'value', gridIndex: 1, name: 'exposure', nameLocation: 'end', nameGap: 8,
+            nameTextStyle: { color: C.slateMoss, fontSize: 12, align: 'left' },
+            axisLabel: { formatter: function (v) { return usd(v); } } }
+        ],
+        series: [
+          { name: 'Exceptions surviving', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: counts,
+            lineStyle: { width: 2, color: C.evergreen }, itemStyle: { color: C.evergreen },
+            showSymbol: true, symbolSize: 5,
+            endLabel: { show: true, formatter: 'count', color: C.evergreen, fontSize: 12, distance: 6 },
+            markPoint: vals.length ? cascadiaAnnotation(
+              num(atNow) + ' ' + plural(atNow, 'line'),
+              { color: C.evergreen, coord: [iNow, atNow],
+                position: iNow <= 3 ? 'right' : 'left', distance: 12, width: 90,
+                align: iNow <= 3 ? 'left' : 'right' }) : undefined },
+          { name: 'Exposure surviving', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: dollars,
+            lineStyle: { width: 2, color: C.madrona }, itemStyle: { color: C.madrona },
+            showSymbol: true, symbolSize: 5,
+            endLabel: { show: true, formatter: 'dollars', color: C.madrona, fontSize: 12, distance: 6 },
+            markPoint: vals.length ? cascadiaAnnotation(
+              usd(dollarsNow),
+              { color: C.madrona, coord: [iNow, dollarsNow],
+                position: iNow <= 3 ? 'right' : 'left', distance: 12, width: 90,
+                align: iNow <= 3 ? 'left' : 'right' }) : undefined }
+        ]
       });
       strip(cThr, vt);
       describe(cThr,
-        'Line chart. Count of off-agreement lines surviving each materiality threshold, ' +
-        'twelve thresholds from zero to fifty thousand dollars, zero baseline.',
+        'Two stacked line charts sharing a threshold axis. Top: count of off-agreement lines ' +
+        'surviving each of twelve materiality thresholds from zero to fifty thousand dollars. ' +
+        'Bottom: the exposure in US dollars those surviving lines carry. Both zero-based.',
         vals.length
           ? 'At a zero threshold ' + counts[0] + ' lines carry ' + usdFull(dollars[0]) +
-            '. At fifty thousand dollars ' + counts[counts.length - 1] + ' lines carry ' +
-            usdFull(dollars[dollars.length - 1]) + '. The series is monotonically decreasing.'
+            '. At twenty-five thousand dollars ' + counts[8] + ' lines carry ' + usdFull(dollars[8]) +
+            '. At fifty thousand ' + counts[11] + ' lines carry ' + usdFull(dollars[11]) +
+            '. Both series decrease monotonically, the count faster than the dollars.'
           : 'No data matches the active filter.');
       renderTable(cThr.tableHost,
-        [{ label: 'Threshold', get: function (r) { return usdFull(r.t); } },
-         { label: 'Lines surviving', num: true, get: function (r) { return num(r.c); } },
+        [{ label: 'Threshold', num: true, get: function (r) { return usdFull(r.t); } },
+         { label: 'Exceptions surviving', num: true, get: function (r) { return num(r.c); } },
+         { label: 'Share of exceptions', num: true, get: function (r) { return vals.length ? pct(r.c / vals.length) : '—'; } },
          { label: 'Exposure visible', num: true, get: function (r) { return usdFull(r.d); } },
          { label: 'Share of exposure', num: true, get: function (r) { return sumScope ? pct(r.d / sumScope) : '—'; } }],
         steps.map(function (t, i) { return { t: t, c: counts[i], d: dollars[i] }; }),
-        'Exception counts by threshold. Monotonic by construction; validate.py check 10 asserts it.');
+        'Exception counts and exposure by threshold. Monotonic by construction; validate.py check 10 asserts it.');
     })();
 
     // ---- Chart: no governing agreement by cause (ranking) ----
@@ -1128,7 +1182,7 @@
       th.setAttribute('role', 'columnheader');
       th.setAttribute('aria-sort', sortKey === c.key
         ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
-      if (c.num) th.className = 'num';
+      th.className = (c.num ? 'num' : '') + (c.fold ? ' fold' : '');
       th.innerHTML = c.label + (sortKey === c.key
         ? ' <span class="dir">' + (sortDir === 'asc' ? '▲' : '▼') + '</span>' : '');
       function doSort() {
@@ -1149,7 +1203,7 @@
       EX_COLS.forEach(function (c) {
         var td = document.createElement('td');
         td.setAttribute('data-label', c.label);
-        if (c.num) td.className = 'num';
+        td.className = (c.num ? 'num' : '') + (c.fold ? ' fold' : '');
         var v = l[c.key];
         if (c.key === 'is_approved_exception') {
           td.innerHTML = v === 1
@@ -1174,6 +1228,38 @@
   }
 
   // ------------------------------------------------------------- wiring
+  // Rule 6.10 — filter state lives in the URL so a reader can send a colleague
+  // the exact view. Paired with Rule 4.4: the strip already names the state, so
+  // a shared link and a screenshot of it now agree.
+  function readHash() {
+    var h = (location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    var q = {};
+    h.split('&').forEach(function (kv) {
+      var i = kv.indexOf('='); if (i < 0) return;
+      q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1));
+    });
+    if (q.c && ALL_CUSTOMERS.some(function (x) { return x.customer_id === q.c; })) elCustomer.value = q.c;
+    if (q.from && /^\d{4}-\d{2}-\d{2}$/.test(q.from)) elFrom.value = q.from;
+    if (q.to && /^\d{4}-\d{2}-\d{2}$/.test(q.to)) elTo.value = q.to;
+    if (q.t && isFinite(+q.t)) elThr.value = Math.max(0, Math.min(50000, +q.t));
+  }
+  var hashLock = false;
+  function writeHash() {
+    var f = currentFilter(), bits = [];
+    if (f.customer) bits.push('c=' + encodeURIComponent(f.customer));
+    if (f.from !== DMIN) bits.push('from=' + f.from);
+    if (f.to !== DMAX) bits.push('to=' + f.to);
+    if (f.threshold) bits.push('t=' + f.threshold);
+    var next = bits.length ? '#' + bits.join('&') : ' ';
+    if (('#' + (location.hash || '').replace(/^#/, '')) !== ('#' + bits.join('&'))) {
+      hashLock = true;
+      history.replaceState(null, '', location.pathname + location.search + (bits.length ? next : ''));
+      hashLock = false;
+    }
+  }
+  window.addEventListener('hashchange', function () { if (!hashLock) { readHash(); render(); } });
+
   ['change', 'input'].forEach(function (ev) {
     elCustomer.addEventListener(ev, render);
     elFrom.addEventListener(ev, render);
@@ -1194,6 +1280,7 @@
     }, 180);
   });
 
+  readHash();
   render();
   window.__DEALDESK_READY__ = true;
 })();

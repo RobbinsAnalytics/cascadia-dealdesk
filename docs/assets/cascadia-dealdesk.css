@@ -261,7 +261,7 @@ table.data tbody tr:hover td { background: #F4F6F3; }
 .table-scroll { max-height: 560px; overflow: auto; }
 table.exceptions { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 table.exceptions caption { text-align: left; padding: 11px 12px 9px; font-size: 13px; color: var(--slate-moss); }
-table.exceptions th, table.exceptions td { padding: 7px 8px; border-bottom: 1px solid var(--mist); white-space: nowrap; }
+table.exceptions th, table.exceptions td { padding: 7px 7px; border-bottom: 1px solid var(--mist); white-space: nowrap; }
 table.exceptions thead th {
   position: sticky; top: 0; background: var(--paper); z-index: 2;
   color: var(--slate-moss); font-weight: 600; text-align: left;
@@ -313,6 +313,7 @@ table.exceptions td.neg { color: var(--down-ink); }
 
 /* ---- small multiples grid (customer page) ---- */
 .sm-claim { font-family: var(--serif); font-size: 17px; margin: 16px 0 6px; max-width: 74ch; }
+.sm-sub { font-size: 12.5px; color: var(--slate-moss); margin: 0 0 8px; }
 .sm-key { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 4px; font-size: 12px; color: var(--slate-moss); }
 .sm-key .k { display: inline-flex; align-items: center; gap: 6px; }
 .sm-key .k::before { content: ""; width: 13px; height: 3px; background: var(--rain); flex: 0 0 13px; }
@@ -336,7 +337,14 @@ table.exceptions td.neg { color: var(--down-ink); }
 .sm-panel .sm-flag { color: var(--down-ink); font-weight: 600; }
 
 /* ---- responsive (Rule 5.5): reflow at 320px, no two-dimensional scrolling ---- */
-@media (max-width: 620px) {
+/* Eleven columns overflow the 1140px wrap at every desktop width, and the
+   container is capped by the wrap rather than the viewport — so this fold is
+   unconditional, not a breakpoint. Agreed price is derivable from quoted price
+   plus variance, and variance percent from variance dollars; both stay in the
+   per-chart data table and reappear in the narrow card list. */
+table.exceptions th.fold, table.exceptions td.fold { display: none; }
+
+@media (max-width: 1040px) {
   .wrap { padding: 0 14px 40px; }
   .kpi-grid { grid-template-columns: 1fr 1fr; }
   .kpi .value { font-size: 23px; }
@@ -347,7 +355,7 @@ table.exceptions td.neg { color: var(--down-ink); }
     border: 1px solid var(--ring); border-radius: 3px;
     margin: 0 8px 9px; padding: 7px 3px; background: var(--paper);
   }
-  table.exceptions td {
+  table.exceptions td, table.exceptions td.fold {
     border: 0; padding: 3px 11px; white-space: normal;
     display: flex; justify-content: space-between; gap: 14px;
   }

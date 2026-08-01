@@ -6,7 +6,11 @@
 <title>Customer pricing &amp; margin — Cascadia Deal Desk</title>
 <meta name="description" content="Are the agreements delivering the margin they were signed for? Pricing governance analytics on synthetic data.">
 <link rel="stylesheet" href="assets/cascadia-dealdesk.css">
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<!-- ECharts is vendored, not fetched. The JSON is already inlined so the page
+     makes no runtime data call; a CDN script tag would have reintroduced a
+     network dependency the architecture exists to avoid. Works offline, from
+     file://, and behind a proxy that blocks public CDNs. -->
+<script src="assets/echarts.min.js"></script>
 <script src="assets/cascadia-echarts-theme.js"></script>
 </head>
 <body>
@@ -55,6 +59,7 @@
     </p>
 
     <p class="sm-claim" id="sm-claim"></p>
+    <p class="sm-sub" id="sm-sub"></p>
     <p class="sm-key">
       <span class="k k-sel">Selected below</span>
       <span class="k k-ero">Full compliance, falling margin</span>
@@ -448,6 +453,12 @@
   });
 
   (function () {
+    var sub = document.getElementById('sm-sub');
+    if (sub) sub.textContent = 'Realized gross margin, monthly, Aug 2024 – Jul 2026 · shared scale ' +
+      pct(yMin, 0) + ' to ' + pct(yMax, 0) + ' · panels ordered by quoted value, largest first';
+  })();
+
+  (function () {
     var el = document.getElementById('sm-claim');
     if (el) {
       var eroCount = panels.filter(function (p, i) {
@@ -544,7 +555,11 @@
     });
     t.appendChild(tb); host.innerHTML = ''; host.appendChild(t);
   }
-  function describe(entry, l1, l2) { entry.el.setAttribute('role', 'img'); entry.el.setAttribute('aria-label', l1 + ' ' + l2); }
+  // L1 + L2 + L3 shape; never L4 interpretation. See index.html.
+  function describe(entry, l1, l2, l3) {
+    entry.el.setAttribute('role', 'img');
+    entry.el.setAttribute('aria-label', l1 + ' ' + l2 + (l3 ? ' ' + l3 : ''));
+  }
   function strip(entry, v) {
     cascadiaProvenance(entry.el, { source: PROV.source, asOf: PROV.asOf, flags: PROV.flags, view: v });
   }
@@ -583,6 +598,7 @@
   elTo.min = DMIN; elTo.max = DMAX; elTo.value = DMAX;
 
   function render() {
+    writeHash();
     var cid = elCustomer.value;
     var from = elFrom.value || DMIN, to = elTo.value || DMAX;
     var cust = CUSTOMERS.filter(function (c) { return c.customer_id === cid; })[0];
@@ -674,94 +690,122 @@
           'Units quoted ' + num(unitsQ) + ' against ' + num(committed) + ' committed on the ' +
           Object.keys(agrIds).length + ' governing ' + plural(Object.keys(agrIds).length, 'agreement') + '.');
 
-    // ---------------- price over time ----------------
-    var months = [];
-    (function () {
-      var set = {};
-      ls.forEach(function (l) { set[monthOf(l.quote_date)] = 1; });
-      months = Object.keys(set).sort();
+    // ---------------- price: gap to agreed, over time ----------------
+    // NOT price levels. A volume-weighted average price across a customer's
+    // whole range mixes $400 parts with $50,000 parts, so the mean tracks
+    // whatever is cheap and high-volume, and the series reads as flat-near-zero
+    // with occasional spikes. The question is "did we quote the agreement",
+    // which is scale-free: the percent gap between the weighted quoted price
+    // and the weighted agreed price over the SAME covered lines.
+    var months = (function () {
+      var out = [], d = new Date(from + 'T00:00:00Z'), last = to.slice(0, 7);
+      var cur = from.slice(0, 7);
+      while (cur <= last && out.length < 400) {
+        out.push(cur);
+        d.setUTCMonth(d.getUTCMonth() + 1);
+        cur = d.toISOString().slice(0, 7);
+      }
+      return out;
     })();
     var byMonth = {};
+    months.forEach(function (m) { byMonth[m] = []; });   // every month exists, possibly empty
     ls.forEach(function (l) { (byMonth[monthOf(l.quote_date)] = byMonth[monthOf(l.quote_date)] || []).push(l); });
 
-    var qSeries = months.map(function (m) { return wavg(byMonth[m], 'quoted_price'); });
-    var aSeries = months.map(function (m) {
-      var cov = byMonth[m].filter(function (l) { return l.agreed_price != null; });
-      return cov.length ? wavg(cov, 'agreed_price') : null;
+    var covOf = function (m) {
+      return byMonth[m].filter(function (l) { return l.agreed_price != null; });
+    };
+    var gapSeries = months.map(function (m) {
+      var cov = covOf(m);
+      if (!cov.length) return null;   // no quotes that month -> a gap, not a zero
+      var q = wavg(cov, 'quoted_price'), a = wavg(cov, 'agreed_price');
+      return (q != null && a != null && a !== 0) ? (q - a) / a : null;
     });
+    var gapObs = gapSeries.filter(function (v) { return v != null; });
+    var worstI = -1, worst = 0;
+    gapSeries.forEach(function (v, i) { if (v != null && v < worst) { worst = v; worstI = i; } });
+    var monthsOff = gapObs.filter(function (v) { return v < -0.005; }).length;
 
     applyHeight(cPrice, 300);
     cPrice.chart.setOption({ series: [] }, true);
     cPrice.chart.setOption({
       title: titleFor(cPrice,
-        priceGap == null ? 'No agreement covers this selection'
-          : (Math.abs(priceGap) < 0.001
-              ? cust.name + ' quoted at the agreed price throughout'
-              : cust.name + ' quoted ' + pct(Math.abs(priceGap), 1) + ' ' +
-                (priceGap < 0 ? 'below' : 'above') + ' agreed price on average'),
-        'Volume-weighted price per unit, monthly, USD'),
-      grid: { left: 8, right: 116, top: LAST_TOP, bottom: 26, containLabel: true },
+        !gapObs.length ? 'No agreement covers this selection'
+          : (monthsOff === 0
+              ? cust.name + ' quoted at the agreed price in every month'
+              : cust.name + ' quoted below agreement in ' + monthsOff + ' of ' +
+                gapObs.length + ' ' + plural(gapObs.length, 'month')),
+        'Volume-weighted quoted price against agreed price, monthly, as a percent gap · ' +
+        'covered lines only · zero means priced to agreement'),
+      grid: { left: 8, right: 126, top: LAST_TOP, bottom: 26, containLabel: true },
       tooltip: {
         trigger: 'axis',
         formatter: function (ps) {
-          var out = '<strong>' + monthLabel(ps[0].axisValue) + '</strong><br>';
-          ps.forEach(function (p) {
-            out += p.marker + p.seriesName + ': ' + (p.value == null ? 'no data' : usdFull(p.value)) + '<br>';
-          });
-          return out;
+          var i = ps[0].dataIndex, m = months[i], cov = covOf(m);
+          return '<strong>' + monthLabel(m) + '</strong><br>' +
+            (gapSeries[i] == null ? 'no covered lines this month'
+              : 'Gap to agreed: ' + pct(gapSeries[i], 2) + '<br>' +
+                usdFull(wavg(cov, 'quoted_price')) + ' quoted vs ' +
+                usdFull(wavg(cov, 'agreed_price')) + ' agreed<br>' +
+                num(cov.length) + ' covered ' + plural(cov.length, 'line'));
         }
       },
       xAxis: { type: 'category', data: months, axisLabel: {
-        formatter: function (m) { return monthLabel(m); }, interval: Math.max(0, Math.floor(months.length / 8)) } },
+        formatter: function (m) { return monthLabel(m); },
+        interval: Math.max(0, Math.floor(months.length / 8)) } },
       yAxis: (function () {
-        var vs = qSeries.concat(aSeries).filter(function (v) { return v != null; });
-        var lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), pad = (hi - lo) * 0.18 || 1;
-        return { type: 'value', min: Math.max(0, lo - pad), max: hi + pad,
-                 axisLabel: { formatter: function (v) { return usd(v); } } };
+        var lo = gapObs.length ? Math.min.apply(null, gapObs) : -0.01;
+        var hi = gapObs.length ? Math.max.apply(null, gapObs) : 0.01;
+        var pad = Math.max((hi - lo) * 0.22, 0.004);
+        return { type: 'value', min: Math.min(lo - pad, -0.004), max: Math.max(hi + pad, 0.004),
+                 axisLabel: { formatter: function (v) { return (v * 100).toFixed(1) + '%'; } } };
       })(),
       series: [
-        { name: 'Agreed price', type: 'line', data: aSeries, symbol: 'none', connectNulls: false,
+        { name: 'At agreement', type: 'line', data: months.map(function () { return 0; }),
+          symbol: 'none', silent: true,
           lineStyle: { width: 2, color: C.rain, type: 'dashed' }, z: 2,
-          endLabel: { show: true, formatter: 'Agreed', color: C.slateMoss, fontSize: 12,
-                      distance: 6, offset: [0, 11] } },
-        { name: 'Quoted price', type: 'line', data: qSeries, symbol: 'none', connectNulls: false,
+          endLabel: { show: true, formatter: 'At agreement', color: C.slateMoss,
+                      fontSize: 12, distance: 6, offset: [0, 11] } },
+        { name: 'Gap to agreed', type: 'line', data: gapSeries, symbol: 'none', connectNulls: false,
           lineStyle: { width: 2, color: C.evergreen }, z: 3,
-          endLabel: { show: true, formatter: 'Quoted', color: C.evergreen, fontSize: 12,
-                      distance: 6, offset: [0, -11] },
-          markPoint: (function () {
-            var i = -1, worst = 0;
-            months.forEach(function (m, k) {
-              if (qSeries[k] != null && aSeries[k] != null) {
-                var g = (qSeries[k] - aSeries[k]) / aSeries[k];
-                if (g < worst) { worst = g; i = k; }
-              }
-            });
-            return i >= 0 && worst < -0.005
-              ? cascadiaAnnotation('Widest gap: ' + pct(worst, 1) + ' under agreement', {
-                  color: C.evergreen, coord: [months[i], qSeries[i]],
-                  position: 'bottom', distance: 16, width: 165, align: 'center' })
-              : undefined;
-          })() }
+          endLabel: { show: true, formatter: 'Quoted', color: C.evergreen,
+                      fontSize: 12, distance: 6, offset: [0, -11] },
+          markPoint: (worstI >= 0 && worst < -0.005)
+            ? cascadiaAnnotation('Widest gap ' + pct(worst, 1), {
+                color: C.evergreen, coord: [months[worstI], gapSeries[worstI]],
+                position: 'bottom', distance: 14, width: 130, align: 'center' })
+            : undefined }
       ]
     });
     strip(cPrice, vt);
     describe(cPrice,
-      'Line chart with two series. Volume-weighted price per unit in US dollars by month for ' +
-      cust.name + ', ' + months.length + ' months, quoted price against agreed price.',
-      'Quoted ranges ' + usdFull(Math.min.apply(null, qSeries.filter(function (v) { return v != null; }))) +
-      ' to ' + usdFull(Math.max.apply(null, qSeries.filter(function (v) { return v != null; }))) +
-      '. Volume-weighted average quoted ' + usdFull(avgQ) + ' against agreed ' + usdFull(avgA) +
-      '. Months with no quotes are gaps.');
+      'Line chart. Monthly percent gap between the volume-weighted quoted price and the ' +
+      'volume-weighted agreed price for ' + cust.name + ' on covered lines, ' + months.length +
+      ' months, with a dashed zero reference marking the agreed price.',
+      gapObs.length
+        ? 'Gap ranges ' + pct(Math.min.apply(null, gapObs), 2) + ' to ' +
+          pct(Math.max.apply(null, gapObs), 2) + ', period average ' + pct(priceGap, 2) +
+          '. ' + monthsOff + ' of ' + gapObs.length + ' months sit below agreement. ' +
+          'Months with no covered lines are gaps.'
+        : 'No covered lines in this selection.',
+      gapObs.length
+        ? 'Shape: the series sits at or near zero for most months with ' + monthsOff +
+          ' distinct downward excursions below the agreed price, rather than a sustained offset.'
+        : '');
     renderTable(cPrice.tableHost,
       [{ label: 'Month', get: function (r) { return r.m; } },
-       { label: 'Quoted price', num: true, get: function (r) { return usdFull(r.q); } },
-       { label: 'Agreed price', num: true, get: function (r) { return usdFull(r.a); } },
-       { label: 'Lines', num: true, get: function (r) { return num(byMonth[r.m].length); } }],
-      months.map(function (m, i) { return { m: m, q: qSeries[i], a: aSeries[i] }; }),
-      'Volume-weighted price per unit by month for ' + cust.name + '.');
+       { label: 'Gap to agreed', num: true, get: function (r) { return r.g == null ? '—' : pct(r.g, 2); } },
+       { label: 'Quoted (wtd)', num: true, get: function (r) {
+           var cov = covOf(r.m); return cov.length ? usdFull(wavg(cov, 'quoted_price')) : '—'; } },
+       { label: 'Agreed (wtd)', num: true, get: function (r) {
+           var cov = covOf(r.m); return cov.length ? usdFull(wavg(cov, 'agreed_price')) : '—'; } },
+       { label: 'Covered lines', num: true, get: function (r) { return num(covOf(r.m).length); } }],
+      months.map(function (m, i) { return { m: m, g: gapSeries[i] }; }),
+      'Monthly gap between quoted and agreed price for ' + cust.name + ', covered lines only.');
 
     // ---------------- margin over time ----------------
-    var gmQSeries = months.map(function (m) { return wgm(byMonth[m], 'quoted'); });
+    var gmQSeries = months.map(function (m) {
+      return byMonth[m].length ? wgm(byMonth[m], 'quoted') : null;
+    });
     var gmASeries = months.map(function (m) {
       var cov = byMonth[m].filter(function (l) { return l.agreed_price != null; });
       return cov.length ? wgm(cov, 'agreed') : null;
@@ -774,7 +818,16 @@
     var perfect = comp != null && comp > 0.995;
     var gmGapNow = (gmQ != null && gmA != null) ? gmQ - gmA : null;
 
-    applyHeight(cMargin, 300);
+    // Rule 1.3 — bank the shape to the realized-margin series rather than
+    // inheriting a fixed height. The price panel above stays at 300 so the
+    // stacked pair keeps a common frame; this panel carries the trend claim.
+    applyHeight(cMargin, (function () {
+      var obs = gmQSeries.filter(function (v) { return v != null; });
+      var h = obs.length > 2
+        ? CASCADIA.bankedHeight(obs, cMargin.el.clientWidth || 900, { min: 230, max: 340 })
+        : null;
+      return h || 300;
+    })());
     cMargin.chart.setOption({ series: [] }, true);
     cMargin.chart.setOption({
       title: titleFor(cMargin,
@@ -841,7 +894,16 @@
       ', ' + months.length + ' months, realized margin against margin at the agreed price.',
       'Realized margin ranges ' + pct(Math.min.apply(null, gq)) + ' to ' + pct(Math.max.apply(null, gq)) +
       ', first ' + pct(gmFirst) + ', last ' + pct(gmLast) + '. Margin at agreed price ' + pct(gmA) +
-      ' over the period. Compliance ' + (comp == null ? 'not applicable' : pct(comp, 1)) + '.');
+      ' over the period. Compliance ' + (comp == null ? 'not applicable' : pct(comp, 1)) + '.',
+      trend
+        ? 'Shape: realized margin ' + (trend.delta < 0 ? 'declines' : 'rises') +
+          ' across the period while oscillating month to month by more than the net change, ' +
+          'and the agreed-price series ' +
+          ((function () {
+            var a = gmASeries.filter(function (v) { return v != null; });
+            return (a.length > 1 && a[a.length - 1] < a[0]) ? 'falls with it' : 'does not track it';
+          })()) + '.'
+        : '');
     renderTable(cMargin.tableHost,
       [{ label: 'Month', get: function (r) { return r.m; } },
        { label: 'Realized margin', num: true, get: function (r) { return pct(r.q, 2); } },
@@ -890,7 +952,7 @@
         }),
         label: { show: true, position: 'right', color: C.basalt, fontSize: 12,
                  formatter: function (p) { return usd(p.value); } },
-        markPoint: cascadiaAnnotation('Margin here: ' + pct(mixArr[0].gm), {
+        markPoint: cascadiaAnnotation('Gross margin on this family ' + pct(mixArr[0].gm), {
           color: C.evergreen, coord: [mixArr[0].rev, 0], position: 'bottom', distance: 18,
           width: 140, align: 'left' })
       }]
@@ -938,8 +1000,12 @@
     });
     var products = {};
     data.dimensions.products.forEach(function (p) { products[p.product_id] = p; });
-    var rowKeys = Object.keys(rowsMap).sort(function (x, y) { return rowsMap[y].length - rowsMap[x].length; });
-    rowKeys = rowKeys.slice(0, 14);
+    var allRowKeys = Object.keys(rowsMap).sort(function (x, y) { return rowsMap[y].length - rowsMap[x].length; });
+    var ROW_CAP = 14;
+    var rowKeys = allRowKeys.slice(0, ROW_CAP);
+    var hiddenRows = allRowKeys.length - rowKeys.length;
+    var shownAgs = rowKeys.reduce(function (n, k) { return n + rowsMap[k].length; }, 0);
+    var hiddenAgs = ags.length - shownAgs;
     var rowLabel = function (k) {
       return k.indexOf('family: ') === 0 ? k.replace('family: ', '') + ' (family)'
         : (products[k] ? products[k].part_number : k);
@@ -953,24 +1019,43 @@
         var e = Math.min(new Date(a.effective_end).getTime(), t1);
         items.push({
           value: [ri, s, e, a.agreement_id, a.status, a.effective_start, a.effective_end,
-                  a.agreed_price, a.superseded_by, a.premium_pct, a.committed_units],
+                  a.agreed_price, a.superseded_by, a.premium_pct, a.committed_units,
+                  new Date(a.effective_start).getTime() < t0 ? 1 : 0,
+                  new Date(a.effective_end).getTime() > t1 ? 1 : 0],
           itemStyle: { color: a.status === 'active' ? C.evergreen : C.rain }
         });
       });
     });
 
-    var nSuperseded = ags.filter(function (a) { return a.status === 'superseded'; }).length;
-    var nActive = ags.filter(function (a) { return a.status === 'active'; }).length;
+    var shownSet = {};
+    rowKeys.forEach(function (k) { rowsMap[k].forEach(function (a) { shownSet[a.agreement_id] = 1; }); });
+    var shownList = ags.filter(function (a) { return shownSet[a.agreement_id]; });
+    var nSuperseded = shownList.filter(function (a) { return a.status === 'superseded'; }).length;
+    var nExpired    = shownList.filter(function (a) { return a.status === 'expired'; }).length;
+    var nActive     = shownList.filter(function (a) { return a.status === 'active'; }).length;
+    var nClamped = 0;
+    rowKeys.forEach(function (k) {
+      rowsMap[k].forEach(function (a) {
+        if (new Date(a.effective_start).getTime() < t0 ||
+            new Date(a.effective_end).getTime() > t1) nClamped++;
+      });
+    });
 
     applyHeight(cTime, Math.max(210, 88 + rowKeys.length * 22) + 26);
     cTime.chart.setOption({ series: [] }, true);
     cTime.chart.setOption({
       title: titleFor(cTime,
-        nSuperseded > 0
-          ? num(ags.length) + ' agreement windows cover this period, ' + num(nSuperseded) + ' already superseded'
-          : num(ags.length) + ' agreement ' + plural(ags.length, 'window') + ' ' +
-            (ags.length === 1 ? 'covers' : 'cover') + ' this period',
-        'Effective windows by part, clamped to the selected range · status as of 2026-08-01'),
+        (nSuperseded + nExpired) > 0
+          ? num(shownAgs) + ' agreement windows shown, ' + num(nActive) + ' still active and ' +
+            num(nSuperseded + nExpired) + ' not' +
+            (nSuperseded && nExpired ? ' (' + nSuperseded + ' superseded, ' + nExpired + ' expired)' : '')
+          : num(shownAgs) + ' agreement ' + plural(shownAgs, 'window') + ', all still active',
+        'Effective windows by part · status as of 2026-08-01, not as of each quote' +
+        (nClamped ? ' · ' + nClamped + ' ' + plural(nClamped, 'window') +
+                    ' extend past the selected range and are clamped, marked \u25B8' : '') +
+        (hiddenRows ? ' · ' + hiddenRows + ' further ' + plural(hiddenRows, 'part') +
+                      ' with ' + hiddenAgs + ' ' + plural(hiddenAgs, 'agreement') +
+                      ' not shown; all are in the table below' : '')),
       grid: { left: 8, right: 22, top: LAST_TOP, bottom: 26, containLabel: true },
       tooltip: {
         formatter: function (p) {
@@ -1002,11 +1087,25 @@
             shape: { x: s[0], y: s[1] - h / 2, width: w, height: h },
             style: api.style()
           }];
-          if (w > 74) {
+          // The method block says a clamped bar carries a caret to show it
+          // continues. It did not, until now — the primary encoding of this
+          // form is bar length, and a bar clamped to both edges says nothing
+          // about its real window unless the clamp is marked.
+          if (api.value(11)) {   // clamped at the start
+            children.push({ type: 'text', style: {
+              x: s[0] + 1, y: s[1], text: '\u25C2', textVerticalAlign: 'middle',
+              textAlign: 'left', fontSize: 11, fill: CASCADIA.colors.basalt } });
+          }
+          if (api.value(12)) {   // clamped at the end
+            children.push({ type: 'text', style: {
+              x: e[0] - 1, y: s[1], text: '\u25B8', textVerticalAlign: 'middle',
+              textAlign: 'right', fontSize: 11, fill: CASCADIA.colors.basalt } });
+          }
+          if (w > 84) {
             children.push({
               type: 'text',
               style: {
-                x: s[0] + 6, y: s[1],
+                x: s[0] + (api.value(11) ? 14 : 6), y: s[1],
                 text: status,
                 textVerticalAlign: 'middle', textAlign: 'left',
                 fontFamily: CASCADIA.sans, fontSize: 12,
@@ -1042,6 +1141,30 @@
       '. Full windows shown, not clamped.');
   }
 
+  // Rule 6.10 — see index.html. Filter state in the URL, so a shared link and
+  // the provenance strip on a screenshot of it describe the same view.
+  function readHash() {
+    var h = (location.hash || '').replace(/^#/, ''); if (!h) return;
+    var q = {};
+    h.split('&').forEach(function (kv) {
+      var i = kv.indexOf('='); if (i < 0) return;
+      q[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1));
+    });
+    if (q.c && CUSTOMERS.some(function (x) { return x.customer_id === q.c; })) elCustomer.value = q.c;
+    if (q.from && /^\d{4}-\d{2}-\d{2}$/.test(q.from)) elFrom.value = q.from;
+    if (q.to && /^\d{4}-\d{2}-\d{2}$/.test(q.to)) elTo.value = q.to;
+  }
+  var hashLock = false;
+  function writeHash() {
+    var bits = ['c=' + encodeURIComponent(elCustomer.value)];
+    if (elFrom.value !== DMIN) bits.push('from=' + elFrom.value);
+    if (elTo.value !== DMAX) bits.push('to=' + elTo.value);
+    hashLock = true;
+    history.replaceState(null, '', location.pathname + location.search + '#' + bits.join('&'));
+    hashLock = false;
+  }
+  window.addEventListener('hashchange', function () { if (!hashLock) { readHash(); render(); } });
+
   ['change', 'input'].forEach(function (ev) {
     elCustomer.addEventListener(ev, render);
     elFrom.addEventListener(ev, render);
@@ -1061,6 +1184,7 @@
     }, 180);
   });
 
+  readHash();
   render();
   window.__DEALDESK_READY__ = true;
 })();
