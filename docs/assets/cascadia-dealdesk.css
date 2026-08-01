@@ -217,7 +217,18 @@ h3 { font-family: var(--serif); font-size: 16px; font-weight: 600; margin: 0 0 4
 .filter-state strong { font-variant-numeric: tabular-nums; }
 
 /* ---- chart cards ---- */
-.chart-grid { display: grid; gap: 18px; grid-template-columns: 1fr 1fr; margin-top: 16px; }
+/* align-items:start, not the grid default of stretch.
+   Titles are functions of the filter state (Rule 6.4), so their line count
+   changes as the reader filters. Under `stretch` a card's trailing whitespace
+   is a function of its NEIGHBOUR's title length: filter the page and a card
+   that did not change visibly resizes. That is the instability Rule 6.9 is
+   about. The equal-height frame bought nothing in exchange, because plot
+   heights are banked to the data (Rule 1.3) and cannot absorb the slack —
+   the plot areas never aligned anyway. Cost accepted: ragged card bottoms. */
+.chart-grid {
+  display: grid; gap: 18px; grid-template-columns: 1fr 1fr;
+  margin-top: 16px; align-items: start;
+}
 .chart-grid.one { grid-template-columns: 1fr; }
 @media (max-width: 860px) { .chart-grid { grid-template-columns: 1fr; } }
 
