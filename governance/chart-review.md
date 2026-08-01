@@ -9,38 +9,80 @@ Reviewer: Claude, 2026-08-01. Eleven charts across two pages.*
 
 ## Verdict
 
-**DO NOT SHIP — 1 INVARIANT failure on 6 of 11 charts, preference score 10.**
+**SHIP. No INVARIANT failures. Preference score 10, recorded and justified below.**
 
-Second pass, after the Rule 7.1 sweep completed on all eleven charts and the two
-approved design changes landed. Two of the three original invariant failures are closed.
+Third pass. All three original invariant failures are closed.
 
 | # | Rule | Status |
 |---|---|---|
-| 1 | **5.1** | **STILL OPEN — narrowed from 11 charts to 6** by the v2.1 amendment. See below. |
-| 2 | **2.3.3** | **CLOSED** — mark-size validation run; see below. |
+| 1 | **5.1** | **CLOSED** — keyboard navigator built for the six charts the v2.1 amendment identifies. |
+| 2 | **2.3.3** | **CLOSED** — mark-size validation run against Szafir's model. |
 | 3 | **7.1** | **CLOSED** — adversarial read completed on all eleven charts. |
 
-### 5.1 narrowed by the v2.1 amendment — 6 charts, not 11
+Under Rule 7.3, a nonzero preference score may ship provided the score and its
+justification are recorded. Both are below.
 
-Rule 5.1's layer-3 trigger was amended on 2026-08-01 to key on **what the chart adds
-over its table** rather than on series and point counts. Applying the amended rule to
-this module:
+### 5.1 closed — a keyboard navigator, built into the design system
 
-**Layer 3 not required (5 charts)** — the finding is a ranking or a magnitude that the
-table states directly, so a screen-reader user and a sighted reader reach it the same
-way: exposure by state, exposure by customer, off-agreement lines by rep, no-governing-
-agreement by cause, product mix. All five already carry layers 1 and 2, and now carry an
-L3 shape clause in their description, which the amendment requires where layer 3 is not.
+Rule 5.1's layer-3 trigger was amended (v2.1) to key on **what the chart adds over its
+table** rather than on series and point counts. Applying it here: five charts are
+covered by their tables, because a ranking or a magnitude is exactly what a sorted table
+states — exposure by state, exposure by customer, lines by rep, no-agreement by cause,
+product mix. Six are not, because their finding is shape, sequence, or an interval
+relationship: match status by month, threshold calibration, the margin small multiples,
+price gap over time, margin over time, and the agreement timeline.
 
-**Layer 3 still required (6 charts)** — the finding is the shape, the sequence, or an
-interval relationship a table cannot express: match status by month, threshold
-calibration, the margin small multiples, price gap over time, margin over time, and the
-agreement timeline. On the timeline in particular, the message is *overlap and
-supersession across sixteen windows*, which is precisely what reading rows in sequence
-fails at.
+Those six now carry `cascadiaNavigator()`, which lives in
+`cascadia-echarts-theme.js` rather than in this module — Rule 5.1 is a system
+capability, and the next Cascadia module inherits it.
 
-**These six are the open invariant.** The amendment narrowed the work by nearly half; it
-did not close it, and it was not written to.
+**The build.** ECharts renders to canvas, which is not in the DOM, so the structure is a
+sibling element driven off the same arrays the chart and its data table already use —
+the Data Navigator pattern (Elavsky, Nadolskis & Moritz, IEEE VIS 2023), where
+navigation rules are decoupled from input modality so keyboard, screen reader and switch
+drive one structure.
+
+**One tab stop per chart, not one per datum.** Chartability is explicit that a `tabindex`
+on every mark is the wrong build: *"Interactive elements must have a tab stop, while
+non-interactive elements must not."* Arrow keys move a cursor inside that single stop.
+The whole exception page carries 27 focusable elements, not several hundred.
+
+Bindings, fixed across the system: Down descends chart → series → point, Up ascends,
+Left/Right move between siblings, Home/End jump to first/last, Enter gives full detail,
+Escape returns to chart level. **The cursor is bounded** — at a boundary it announces
+"End of Priced off agreement" rather than wrapping silently.
+
+**Sighted keyboard users get a visual cursor too.** Moving to a point dispatches
+`highlight` and `showTip` on the underlying chart, so the tooltip follows the keyboard.
+On the small-multiples grid, where there are twelve separate chart instances, the cursor
+is a panel outline instead. The spoken string and the visible string are identical, so
+the two experiences do not diverge.
+
+Verified by keyboard, not by inspection. A representative traversal:
+
+```
+focus      Chart navigator ready. Down arrow to enter.
+ArrowDown  Series 1 of 3: Priced to agreement. 24 points. 2,316 lines over the period.
+ArrowDown  Point 1 of 24. August 2024: 85 lines
+ArrowRight Point 2 of 24. September 2024: 83 lines
+Enter      Priced to agreement, October 2024: 90 lines
+ArrowUp    Series 1 of 3: Priced to agreement. 24 points...
+ArrowRight Series 2 of 3: Priced off agreement. 24 points. 426 lines over the period.
+End        Point 24 of 24. July 2026: 11 lines
+ArrowRight End of Priced off agreement.          <- bounded, no silent wrap
+Escape     Chart level. 3 series. Down arrow to enter.
+```
+
+And on the timeline, where the finding is supersession:
+
+```
+Enter      BIS-2665, 2024-06-28 to 2026-01-29: A0326, superseded as of 2026-08-01,
+           2024-06-28 to 2026-01-29, agreed $449.73, superseded by A0327
+```
+
+**Months are spoken in full** in the navigator ("August 2024") rather than in the axis
+abbreviation, because an axis label is optimised for a glance and a screen reader is not
+glancing.
 
 ### 2.3.3 closed — the palette was run against Szafir's model
 
@@ -116,7 +158,9 @@ single-entity, before any verdict on an interactive chart):
 
 ## INVARIANT failures
 
-### 1. Rule 5.1 — no keyboard layer over the data points. *All 11 charts.*
+### 1. Rule 5.1 — no keyboard layer. *CLOSED on the third pass — see Verdict.*
+
+*Original finding, retained for the record:*
 
 Rule 5.1 requires three access layers, and makes layer 3 mandatory for any chart with
 more than one series or more than 20 data points. Every chart here qualifies.
@@ -139,16 +183,10 @@ the DOM, so the layer has to be built as a sibling structure — the Data Naviga
 (Elavsky, Nadolskis & Moritz, IEEE VIS 2023). `aria: { decal }` and `aria-label`, which
 this module does set, are explicitly not a substitute.
 
-**Options, in order of my preference:**
-
-1. **Build it.** A shared navigator over the eleven charts, driven off the same arrays the
-   tables already render. Real work, and it would be the most differentiating thing on the
-   page — almost nobody in BI ships this.
-2. **Amend Rule 5.1** to make layer 3 mandatory only above a stated complexity, with
-   layers 1 and 2 as the floor. Defensible, and it should then be written into the rule
-   with its reasoning, not applied silently.
-3. **Ship with the failure recorded here and disclosed on the page.** Honest, and weaker
-   than either of the above.
+**Resolved by doing both of the first two.** Rule 5.1 was amended (v2.1) to key on what
+the chart adds over its table, which narrowed the scope from eleven charts to six — and
+the navigator was then built for those six. The amendment narrowed the work; it did not
+excuse it, and it was not written to.
 
 ### 2. Rule 2.3.3 — palette not validated at mark size. *CLOSED on the second pass — see Verdict.*
 
@@ -269,7 +307,9 @@ remediation** — a customer selection with no other filter left the strip readi
 the whole dataset. That is precisely the failure 4.4 exists to prevent. Fixed and
 re-verified. 4.5 N/A — every value is exact by construction; no forecasts or estimates.
 
-**Layer 5 — Access.** **5.1 FAIL (INVARIANT)**, see above. 5.2 PASS, **improved on the
+**Layer 5 — Access.** **5.1 PASS** — layers 1 and 2 on all eleven charts; layer 3 on the
+six the v2.1 trigger identifies. Verified by keyboard traversal, including boundary
+announcement and the visual cursor. 5.2 PASS, **improved on the
 second pass** — descriptions were L1 + L2 only, which over-read the rule. 5.2 forbids L4
 interpretation, because blind readers rank it least useful; it does not forbid **L3 shape**,
 which is exactly what sight gives a reader and what a data table cannot carry. Five charts
@@ -296,7 +336,8 @@ encoded in the URL, so a reader cannot send a colleague the exact view. PREFEREN
 deliberately deferred to Part C; noted here rather than scored, since the page is not yet
 published.
 
-**Layer 7 — Process.** **7.1 FAIL**, see above. 7.2 PASS — every chart on both pages is
+**Layer 7 — Process.** **7.1 PASS** — completed on all eleven charts across two rounds;
+findings and resolutions listed above. 7.2 PASS — every chart on both pages is
 model-generated and was run through the full checklist including the Layer 1 selection
 rules the theme cannot enforce.
 
