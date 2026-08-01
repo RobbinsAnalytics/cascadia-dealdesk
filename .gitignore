@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS noise
+Thumbs.db
+.DS_Store
+
+# NOTE: data/raw/ and data/cascadia_dealdesk.db are intentionally COMMITTED.
+# The generated CSVs are the project's reproducible artifact — do not ignore them.

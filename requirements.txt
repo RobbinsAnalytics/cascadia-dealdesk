@@ -1,0 +1,7 @@
+# Cascadia Deal Desk — pinned dependencies (minimal by design)
+# Install with:  pip install -r requirements.txt
+#
+# No network dependency: all data is generated locally by src/generate.py.
+# There is no ingestion step and no `requests`. Everything else the pipeline
+# needs (sqlite3, random, hashlib, csv, json) is in the Python standard library.
+pandas==3.0.3
