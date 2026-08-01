@@ -386,6 +386,45 @@ softer evidence than a real human pass where the title can be covered. What the 
 found — clipped words, phantom marks, unverifiable claims — holds regardless. **When you
 run this on people, crop the title out of the image first.**
 
+## Regression found after the ship verdict
+
+**Rule 6.7 (exactly one provenance strip, always) failed once the keyboard
+navigator was added, and my own testing missed it.**
+
+`cascadiaProvenance` guarded idempotency by checking `nextElementSibling` for an
+existing strip. That held until something else could occupy the sibling slot —
+and `cascadiaNavigator` inserts itself immediately after the chart element. From
+that point the guard looked at the navigator, found no strip, and appended a
+fresh one on **every re-render**. On the customer page, changing the selector
+seven times produced seven strips under a chart, each naming a different
+customer in its filter segment.
+
+Two things are worth recording rather than just fixing:
+
+1. **The guard was written against adjacency, not ownership.** Strips are now
+   tagged with a `data-cascadia-prov` attribute keyed to the chart they belong
+   to, and removed by query across the parent rather than by position. Insertion
+   also targets the navigator when one exists, so reading order stays
+   chart → navigator → provenance → data table regardless of which helper runs
+   first.
+2. **My verification was the real failure.** The strip count was checked after a
+   single render, and after filter changes made *before* the navigator existed.
+   It was never re-checked after re-render once the navigator was in. A Rule 6.7
+   violation is invisible until a reader moves a control, which is precisely why
+   Rule 7.3 requires reaching three states — I applied that to the charts and not
+   to the page furniture.
+
+**Verified after the fix:** exactly one strip per chart across seven customer
+selections, a date-range change, a reset, five threshold moves and four customer
+filters on the exception page. Reading order confirmed.
+
+**Also removed on the same pass:** a method-block callout on the exception page
+narrated the page's own rhetorical strategy back at the reader ("a finance reader
+checks this in thirty seconds, so the page states it rather than waiting to be
+asked"). That is prep-note voice, not page copy. The finding it carried — that
+price variance and margin impact are the same number — stays, stated plainly and
+pointed at the validation check that proves it.
+
 ## A rulebook defect this review surfaced
 
 Not a chart failure — a conflict between two INVARIANTs, which under v2's own enforcement

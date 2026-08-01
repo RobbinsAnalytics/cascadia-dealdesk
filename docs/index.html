@@ -61,12 +61,11 @@
 
     <div class="method callout-block" style="margin-top:16px">
       <div class="callout">
-        <p><strong>Say the arithmetic first.</strong> Margin impact is exactly the negative of price
-        variance. Standard cost cancels out of the subtraction, so <strong>every dollar of price
-        variance is a dollar of margin, one for one</strong> — there is no volume offset and no cost
-        recovery. A finance reader checks this in thirty seconds, so the page states it rather than
-        waiting to be asked. The check is automated in <code>validate.py</code> and reconciles on
-        every matched line.</p>
+        <p><strong>Price variance and margin impact are the same number.</strong> Standard cost
+        cancels out of the subtraction, so <strong>every dollar of price variance is a dollar of
+        margin, one for one</strong> — there is no volume offset and no cost recovery. The identity
+        is reconciled on every matched line by <code>validate.py</code> check 5, and derived the
+        long way in <code>conform.py</code> so it is verified rather than assumed.</p>
       </div>
     </div>
 
