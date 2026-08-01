@@ -260,8 +260,12 @@
   function cascadiaAnnotation(text, opts) {
     opts = opts || {};
     return {
+      // No visible anchor. A filled dot in the series colour reads as a data
+      // point — two independent naive readers mistook it for one. Rule 3.4
+      // accepts proximity as the redundant linkage channel, so the label sits
+      // close to its mark and carries no false datum.
       symbol: 'circle',
-      symbolSize: 6,
+      symbolSize: 0,
       data: [{
         coord: opts.coord,
         itemStyle: { color: opts.color || C.evergreen },
@@ -269,15 +273,19 @@
           show: true,
           formatter: text,
           position: opts.position || 'top',
-          distance: opts.distance == null ? 10 : opts.distance,
+          distance: opts.distance == null ? 8 : opts.distance,
           color: opts.color || C.evergreen,     // colour-matched to the mark
           fontFamily: SERIF,
           fontSize: opts.fontSize || 13,
           align: opts.align || 'center',
           width: opts.width || 180,
           overflow: 'break',
-          backgroundColor: 'rgba(252,252,250,0.85)',  // readability, not decoration
-          padding: [2, 4]
+          // Legibility over marks comes from a glyph outline, not a filled box.
+          // A box occludes the data underneath it — which is how a highlighted
+          // bar ends up with a pale stub through it that reads as a value.
+          textBorderColor: '#FCFCFA',
+          textBorderWidth: 3,
+          padding: 0
         }
       }]
     };
