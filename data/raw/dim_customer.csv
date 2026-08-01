@@ -1,0 +1,41 @@
+customer_id,name,segment,region
+C001,Alderwood Microsystems,Strategic,Americas
+C002,Basalt Semiconductor Works,Strategic,Japan
+C003,Cedarline Devices,Core,Japan
+C004,Driftwood Integrated,Strategic,APAC
+C005,Elkhorn Test Systems,Strategic,Japan
+C006,Fernvale Microelectronics,Emerging,Americas
+C007,Glacier Peak Devices,Core,Japan
+C008,Harborlight Semiconductors,Emerging,APAC
+C009,Ironwood Wafer Labs,Emerging,Japan
+C010,Juniper Ridge Micro,Emerging,Americas
+C011,Kettle Falls Instruments,Core,Japan
+C012,Larchmont Silicon,Emerging,Americas
+C013,Madrona Test Group,Strategic,APAC
+C014,Nootka Devices,Core,EMEA
+C015,Olympic Foundry Partners,Core,APAC
+C016,Pemberton Microdevices,Strategic,APAC
+C017,Quilcene Systems,Strategic,Americas
+C018,Rainshadow Electronics,Emerging,APAC
+C019,Saltspring Semiconductor,Emerging,Japan
+C020,Tamarack Micro Labs,Emerging,Americas
+C021,Umatilla Devices,Strategic,Japan
+C022,Vashon Integrated Circuits,Core,Americas
+C023,Wallowa Test Solutions,Emerging,Americas
+C024,Yarrow Point Micro,Core,Japan
+C025,Zircon Bay Devices,Core,Japan
+C026,Ashfall Microsystems,Core,Japan
+C027,Beacon Rock Silicon,Emerging,Americas
+C028,Chinook Device Labs,Emerging,Americas
+C029,Deception Pass Micro,Strategic,Americas
+C030,Emerald Ridge Electronics,Core,EMEA
+C031,Foxglove Semiconductor,Core,Japan
+C032,Granite Falls Devices,Strategic,Japan
+C033,Hoodsport Instruments,Strategic,EMEA
+C034,Inlet Point Micro,Core,APAC
+C035,Kingfisher Test Labs,Core,Japan
+C036,Lupine Valley Devices,Core,Japan
+C037,Mosswood Semiconductor,Emerging,Americas
+C038,Newhalem Microsystems,Core,APAC
+C039,Orcas Device Works,Strategic,APAC
+C040,Puffin Cove Electronics,Strategic,Japan
