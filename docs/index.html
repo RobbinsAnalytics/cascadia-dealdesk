@@ -311,6 +311,13 @@
   }
   function num(v) { return v == null ? '—' : v.toLocaleString('en-US'); }
   function plural(n, one, many) { return n === 1 ? one : (many || one + 's'); }
+  // Spoken month for the navigator. Axis labels abbreviate; a screen reader
+  // should hear the whole thing.
+  function spokenMonth(ym) {
+    var a = ym.split('-');
+    return ['January','February','March','April','May','June','July','August',
+            'September','October','November','December'][+a[1] - 1] + ' ' + a[0];
+  }
 
   // -------------------------------------------------------------- helpers
   // Leakage convention, from meta.definitions: headline totals exclude
@@ -605,6 +612,26 @@
       'Shape: total volume rises across the period with a peak around month 15 and a ' +
       'seasonal dip mid-series. The off-agreement and no-agreement bands hold a roughly ' +
       'constant share throughout rather than narrowing.');
+    // Rule 5.1 layer 3 — this chart's finding is a trend, which a table of 24
+    // rows carries badly. Series -> months.
+    cascadiaNavigator(cStatus.el, {
+      chart: cStatus.chart,
+      label: 'Monthly quote lines by match status, three series over 24 months.',
+      series: [
+        { name: 'Priced to agreement', summary: num(msc.priced_to_agreement) + ' lines over the period',
+          points: order.map(function (m, i) {
+            return { label: spokenMonth(m), value: months[m].to + ' lines',
+                     seriesIndex: 0, dataIndex: i }; }) },
+        { name: 'Priced off agreement', summary: num(msc.priced_off_agreement) + ' lines over the period',
+          points: order.map(function (m, i) {
+            return { label: spokenMonth(m), value: months[m].off + ' lines',
+                     seriesIndex: 1, dataIndex: i }; }) },
+        { name: 'No governing agreement', summary: num(msc.no_governing_agreement) + ' lines over the period',
+          points: order.map(function (m, i) {
+            return { label: spokenMonth(m), value: months[m].none + ' lines',
+                     seriesIndex: 2, dataIndex: i }; }) }
+      ]
+    });
     renderTable(cStatus.tableHost,
       [{ label: 'Month', get: function (r) { return r.m; } },
        { label: 'To agreement', num: true, get: function (r) { return num(months[r.m].to); } },
@@ -1052,6 +1079,24 @@
             '. At fifty thousand ' + counts[11] + ' lines carry ' + usdFull(dollars[11]) +
             '. Both series decrease monotonically, the count faster than the dollars.'
           : 'No data matches the active filter.');
+      // Rule 5.1 layer 3 — the finding is that two curves diverge in shape,
+      // which is the definition of something a table cannot carry.
+      cascadiaNavigator(cThr.el, {
+        chart: cThr.chart,
+        label: 'Two stacked line charts over twelve materiality thresholds: exception count above, exposure below.',
+        series: [
+          { name: 'Exceptions surviving', summary: 'falls from ' + counts[0] + ' to ' + counts[counts.length - 1],
+            points: steps.map(function (t, i) {
+              return { label: 'threshold ' + usdFull(t), value: num(counts[i]) + ' lines',
+                       detail: num(counts[i]) + ' lines, ' + usdFull(dollars[i]) + ' exposure',
+                       seriesIndex: 0, dataIndex: i }; }) },
+          { name: 'Exposure surviving', summary: 'falls from ' + usd(dollars[0]) + ' to ' + usd(dollars[dollars.length - 1]),
+            points: steps.map(function (t, i) {
+              return { label: 'threshold ' + usdFull(t), value: usdFull(dollars[i]),
+                       detail: usdFull(dollars[i]) + (sumScope ? ', ' + pct(dollars[i] / sumScope) + ' of exposure' : ''),
+                       seriesIndex: 1, dataIndex: i }; }) }
+        ]
+      });
       renderTable(cThr.tableHost,
         [{ label: 'Threshold', num: true, get: function (r) { return usdFull(r.t); } },
          { label: 'Exceptions surviving', num: true, get: function (r) { return num(r.c); } },

@@ -257,10 +257,16 @@
       { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   function pct(v, dp) { return (v == null || !isFinite(v)) ? '—' : (v * 100).toFixed(dp == null ? 1 : dp) + '%'; }
+  function pp2(v) { return pp(v); }
   function pp(v) { return (v == null || !isFinite(v)) ? '—' : (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + 'pp'; }
   function num(v) { return v == null ? '—' : v.toLocaleString('en-US'); }
   function plural(n, one, many) { return n === 1 ? one : (many || one + 's'); }
   function monthOf(d) { return d.slice(0, 7); }
+  function spokenMonth(ym) {
+    var a = ym.split('-');
+    return ['January','February','March','April','May','June','July','August',
+            'September','October','November','December'][+a[1] - 1] + ' ' + a[0];
+  }
   function monthLabel(m) {
     var p = m.split('-');
     return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+p[1] - 1] +
@@ -478,6 +484,29 @@
     if (el) el.textContent = 'Panel set: ' + PANEL_RULE + ' — stated because ranking on value alone ' +
       'would have put every erosion case off the grid.';
   })();
+
+  // Rule 5.1 layer 3 for the grid. Twelve separate chart instances, so the
+  // visual cursor is a panel outline rather than an ECharts highlight.
+  cascadiaNavigator(smGrid, {
+    chart: null,
+    label: 'Small multiples grid, ' + panels.length + ' panels, realized gross margin by month on a shared scale.',
+    series: panels.map(function (pp, i) {
+      var comp = compliance(pp.ls), t = endpointTrend(panelSeries[i]);
+      return {
+        name: pp.c.name,
+        summary: (comp == null ? 'no covered lines' : pct(comp, 0) + ' priced to agreement') +
+                 (t ? ', net ' + pp2(t.delta) : ''),
+        points: ALL_MONTHS.map(function (m, mi) {
+          return { label: spokenMonth(m),
+                   value: panelSeries[i][mi] == null ? 'no quotes' : pct(panelSeries[i][mi], 1) }; })
+      };
+    }),
+    onFocus: function (node) {
+      Array.prototype.forEach.call(smGrid.children, function (el, i) {
+        el.classList.toggle('is-cursor', node.level > 0 && i === node.seriesIndex);
+      });
+    }
+  });
 
   // the erosion callout, computed rather than asserted
   (function () {
@@ -791,6 +820,18 @@
         ? 'Shape: the series sits at or near zero for most months with ' + monthsOff +
           ' distinct downward excursions below the agreed price, rather than a sustained offset.'
         : '');
+    cascadiaNavigator(cPrice.el, {
+      chart: cPrice.chart,
+      label: 'Monthly percent gap between quoted and agreed price for ' + cust.name + '.',
+      series: [{ name: 'Gap to agreed',
+        summary: gapObs.length ? monthsOff + ' of ' + gapObs.length + ' months below agreement' : 'no covered lines',
+        points: months.map(function (m, i) {
+          return { label: spokenMonth(m),
+                   value: gapSeries[i] == null ? 'no covered lines' : pct(gapSeries[i], 2),
+                   detail: gapSeries[i] == null ? 'no covered lines this month'
+                     : pct(gapSeries[i], 2) + ', ' + num(covOf(m).length) + ' covered lines',
+                   seriesIndex: 1, dataIndex: i }; }) }]
+    });
     renderTable(cPrice.tableHost,
       [{ label: 'Month', get: function (r) { return r.m; } },
        { label: 'Gap to agreed', num: true, get: function (r) { return r.g == null ? '—' : pct(r.g, 2); } },
@@ -904,6 +945,25 @@
             return (a.length > 1 && a[a.length - 1] < a[0]) ? 'falls with it' : 'does not track it';
           })()) + '.'
         : '');
+    cascadiaNavigator(cMargin.el, {
+      chart: cMargin.chart,
+      label: 'Monthly revenue-weighted gross margin for ' + cust.name +
+             ', realized against margin at the agreed price.',
+      series: [
+        { name: 'Realized margin',
+          summary: trend ? 'net ' + pp(trend.delta) + ' over the period' : '',
+          points: months.map(function (m, i) {
+            return { label: spokenMonth(m),
+                     value: gmQSeries[i] == null ? 'no quotes' : pct(gmQSeries[i], 2),
+                     seriesIndex: 1, dataIndex: i }; }) },
+        { name: 'Margin at agreed price',
+          summary: gmA == null ? 'not defined' : pct(gmA) + ' over the period',
+          points: months.map(function (m, i) {
+            return { label: spokenMonth(m),
+                     value: gmASeries[i] == null ? 'no covered lines' : pct(gmASeries[i], 2),
+                     seriesIndex: 0, dataIndex: i }; }) }
+      ]
+    });
     renderTable(cMargin.tableHost,
       [{ label: 'Month', get: function (r) { return r.m; } },
        { label: 'Realized margin', num: true, get: function (r) { return pct(r.q, 2); } },
@@ -1126,6 +1186,24 @@
       num(ags.length) + ' agreements overlap the range: ' + nActive + ' active, ' + nSuperseded +
       ' superseded, ' + (ags.length - nActive - nSuperseded) + ' expired, as of 2026-08-01. ' +
       'Windows are clamped to the selected range.');
+    // Rule 5.1 layer 3 — the message here is overlap and supersession across
+    // windows, an interval relationship a row-by-row table cannot express.
+    cascadiaNavigator(cTime.el, {
+      chart: null,
+      label: 'Agreement effective windows for ' + cust.name + ' across ' + rowKeys.length + ' parts.',
+      series: rowKeys.map(function (k) {
+        var list = rowsMap[k].slice().sort(function (a, b) {
+          return a.effective_start.localeCompare(b.effective_start); });
+        return { name: rowLabel(k), summary: list.length + ' ' + plural(list.length, 'window'),
+          points: list.map(function (a) {
+            return { label: a.effective_start + ' to ' + a.effective_end,
+                     value: a.status + ', agreed ' + usdFull(a.agreed_price),
+                     detail: a.agreement_id + ', ' + a.status + ' as of 2026-08-01, ' +
+                             a.effective_start + ' to ' + a.effective_end + ', agreed ' +
+                             usdFull(a.agreed_price) +
+                             (a.superseded_by ? ', superseded by ' + a.superseded_by : '') }; }) };
+      })
+    });
     renderTable(cTime.tableHost,
       [{ label: 'Agreement', get: function (a) { return a.agreement_id; } },
        { label: 'Scope', get: function (a) { return a.scope === 'part' ? (products[a.product_id] ? products[a.product_id].part_number : a.product_id) : a.family + ' (family)'; } },
