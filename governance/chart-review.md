@@ -9,26 +9,77 @@ Reviewer: Claude, 2026-08-01. Eleven charts across two pages.*
 
 ## Verdict
 
-**DO NOT SHIP — 3 INVARIANT failures, preference score 24.**
+**DO NOT SHIP — 1 INVARIANT failure on 6 of 11 charts, preference score 10.**
 
-The two pages are complete, correct against the validation report, and free of console
-errors at every state reached. They do not ship yet, and the reasons are worth stating
-plainly rather than softening:
+Second pass, after the Rule 7.1 sweep completed on all eleven charts and the two
+approved design changes landed. Two of the three original invariant failures are closed.
 
-| # | Rule | Failure | Scope |
-|---|---|---|---|
-| 1 | **5.1** | No keyboard-navigable structure over the data points | All 11 charts |
-| 2 | **2.3.3** | Palette has never been validated at the mark sizes actually drawn | All 11 charts |
-| 3 | **7.1** | Adversarial read completed on 2 of 11 charts | 9 charts |
+| # | Rule | Status |
+|---|---|---|
+| 1 | **5.1** | **STILL OPEN — narrowed from 11 charts to 6** by the v2.1 amendment. See below. |
+| 2 | **2.3.3** | **CLOSED** — mark-size validation run; see below. |
+| 3 | **7.1** | **CLOSED** — adversarial read completed on all eleven charts. |
 
-Failures 2 and 3 are the interesting ones: **2 is inherited from the design system, not
-caused by this module**, and **3 found a real INVARIANT breach on the two charts it did
-cover**, which is the strongest available argument for closing it on the other nine.
+### 5.1 narrowed by the v2.1 amendment — 6 charts, not 11
 
-Preference score 24 is recorded below with justification per item. Under Rule 7.3 a
-nonzero preference score may ship; an INVARIANT failure may not.
+Rule 5.1's layer-3 trigger was amended on 2026-08-01 to key on **what the chart adds
+over its table** rather than on series and point counts. Applying the amended rule to
+this module:
 
----
+**Layer 3 not required (5 charts)** — the finding is a ranking or a magnitude that the
+table states directly, so a screen-reader user and a sighted reader reach it the same
+way: exposure by state, exposure by customer, off-agreement lines by rep, no-governing-
+agreement by cause, product mix. All five already carry layers 1 and 2, and now carry an
+L3 shape clause in their description, which the amendment requires where layer 3 is not.
+
+**Layer 3 still required (6 charts)** — the finding is the shape, the sequence, or an
+interval relationship a table cannot express: match status by month, threshold
+calibration, the margin small multiples, price gap over time, margin over time, and the
+agreement timeline. On the timeline in particular, the message is *overlap and
+supersession across sixteen windows*, which is precisely what reading rows in sequence
+fails at.
+
+**These six are the open invariant.** The amendment narrowed the work by nearly half; it
+did not close it, and it was not written to.
+
+### 2.3.3 closed — the palette was run against Szafir's model
+
+The check Rule 2.3.3 requires was never run because the design system had never run
+it. It has now been, against the five Cascadia hues.
+
+The a*-axis noticeable-difference requirement scales sharply with mark size: a 50px
+swatch needs 7.0 units, a 2px stroke needs 11.5 (1.6x), and a 6px point needs 18.5
+(2.6x). Against that:
+
+- **At 2px stroke — the only small mark this module draws — all ten pairs pass.**
+- **The two hues actually used at 2px pass by a wide margin**: Evergreen against
+  Madrona at 6.6 JND, and each against Rain at 2.7 and 3.9.
+- **At 6px point, two pairs fall below 1 JND on the a* axis**: Glacier/Lichen (0.86)
+  and Lupine/Lichen (0.68). This module draws no 6px points, so it is unaffected.
+
+**A design-system finding falls out of this and should not be lost.** Rule 2.3.4
+designates Evergreen / Glacier / Lichen as the all-pairs trio for small symmetric
+marks — and **Glacier/Lichen is one of the two pairs that goes marginal at 6px**. The
+trio was validated for colour-vision safety at swatch size; it was not validated at the
+mark size the rule assigns it to. Any future scatter plot using the trio needs this
+re-checked first.
+
+*Caveat on method, stated because it bounds the claim: this applies the a*-axis
+component of Szafir's model only. The published model normalises L*, a* and b*
+separately and combines them, and I do not have the L* and b* coefficients. Both
+flagged pairs carry very large b* separation (85 and 86 units), which the full
+three-axis model would very likely rescue. Read the 6px flags as "re-check before
+use", not as "fails".*
+
+### 7.1 closed — and it was worth every minute
+
+The adversarial read ran on all eleven charts, using readers with no project context,
+asked to describe the marks before reading the title. **It found problems on every
+chart**, including two more Rule 3.2 invariant breaches of the same class as the first.
+
+Everything it found is listed in "Second pass findings" below. Twenty-one changes came
+out of it, including two chart redesigns, one theme defect affecting every future
+module, and three silent-cap or mislabelling faults.
 
 ## What was reviewed
 
@@ -99,7 +150,9 @@ this module does set, are explicitly not a substitute.
 3. **Ship with the failure recorded here and disclosed on the page.** Honest, and weaker
    than either of the above.
 
-### 2. Rule 2.3.3 — palette not validated at mark size. *All 11 charts.*
+### 2. Rule 2.3.3 — palette not validated at mark size. *CLOSED on the second pass — see Verdict.*
+
+*Original finding, retained for the record:*
 
 The categorical palette was validated as large swatches. Rule 2.3.3 requires the pairwise
 check to be re-run at **40 px block, 2 px stroke and 6 px point**, because perceived colour
@@ -113,10 +166,13 @@ Mitigating, and worth recording: the thin-stroke charts use only **two** saturat
 (Evergreen and Madrona) against a Rain band, never four or five, and every series carries a
 direct label. The risk this rule guards against is largely absent by construction.
 
-**This is design-system open item 2 and this module cannot close it.** It blocks on
-re-running Szafir's model against the Cascadia hues, which is a design-system task.
+**Closed.** The model was run; all pairs pass at 2px stroke and this module draws no
+6px points. The residual finding — that the all-pairs trio contains a pair that goes
+marginal at 6px — is recorded in the Verdict and belongs to the design system.
 
-### 3. Rule 7.1 — adversarial read incomplete. *9 of 11 charts.*
+### 3. Rule 7.1 — adversarial read. *CLOSED on the second pass — all 11 charts.*
+
+*Original finding, retained because it is the reason the second pass happened:*
 
 Rule 7.1 requires that someone who does not know the finding say what they see first, and
 that the chart be viewed in a second arrangement.
@@ -142,8 +198,8 @@ Six changes came out of that single read:
 | Eleven grey ghost lines per panel read as texture; the highlighted line's position in the field was unreadable in 8 of 12 panels | Replaced with the field's min–max envelope band |
 | Small multiples had no time axis at all, and no stated claim | Endpoint month labels added; a claim sentence and a four-item key added above the grid |
 
-**Nine charts have not had this read.** Given what it returned on two, that is not a
-formality. See "Running Rule 7.1" at the end.
+**Nine charts had not had this read at the time.** They have now. See "Second pass
+findings" below — it returned problems on every one of them.
 
 ---
 
@@ -213,8 +269,12 @@ remediation** — a customer selection with no other filter left the strip readi
 the whole dataset. That is precisely the failure 4.4 exists to prevent. Fixed and
 re-verified. 4.5 N/A — every value is exact by construction; no forecasts or estimates.
 
-**Layer 5 — Access.** **5.1 FAIL (INVARIANT)**, see above. 5.2 PASS — every `aria-label`
-is construction plus statistics, with no interpretation. 5.3 PASS — 12 px text floor
+**Layer 5 — Access.** **5.1 FAIL (INVARIANT)**, see above. 5.2 PASS, **improved on the
+second pass** — descriptions were L1 + L2 only, which over-read the rule. 5.2 forbids L4
+interpretation, because blind readers rank it least useful; it does not forbid **L3 shape**,
+which is exactly what sight gives a reader and what a data table cannot carry. Five charts
+now carry an explicit shape clause ("a steep head and a long tail", "at or near zero with
+N distinct downward excursions"). Still no L4 anywhere. 5.3 PASS — 12 px text floor
 throughout, 2 px focus rings at ≥3:1 never clipped, 24 px minimum control targets, reflow
 verified at 360 px with no horizontal overflow on either page. 5.4 FAIL-risk noted, not
 scored — the pages pass monochrome because no chart relies on hue alone, but the palette's
@@ -241,6 +301,49 @@ model-generated and was run through the full checklist including the Layer 1 sel
 rules the theme cannot enforce.
 
 ---
+
+## Second pass findings — all eleven charts
+
+**Rule 3.2 breaches (invariant, all fixed):**
+
+| Chart | Claim that was not on the plot | Resolution |
+|---|---|---|
+| Threshold calibration | *"Half the exposure sits in the 82 largest lines"* — the y-axis was line **count**; dollars were plotted nowhere | Rebuilt as **two stacked panels** sharing the threshold axis, count above and exposure below (Rule 2.2 — different units cannot share a value axis). The finding is now visible: count falls far faster than dollars, which is the calibration argument |
+| Realized vs agreed price | *"quoted 1.3% below agreed price on average"* — the agreed series was invisible for 23 of 24 months, and the one measurable gap was −20.5% | **Chart replaced.** It plotted volume-weighted price per unit across a customer's whole range, mixing $400 and $50,000 parts, so the mean tracked whatever was cheap and high-volume. Now plots the **percent gap to agreed** on covered lines, which is scale-free |
+| Match status by month | *"held near a quarter"* — measured at ~20% by a reader counting pixels, and "held" implied a stability the 15–31% monthly range contradicts | Now states the actual level (23%) and the range, and claims only the trend the plot shows |
+
+**Silent caps and mislabelling (all fixed):**
+
+- Agreement timeline printed **"17 windows" while rendering 14 rows** — a silent cap. Now reports windows shown, discloses how many parts and agreements are not shown, and points to the table.
+- The same title said **"2 superseded" while a third bar read `expired`** in identical grey, so the colour channel was not invertible. Both statuses are now named and counted.
+- The method block **promised carets on clamped bars that did not exist**. A reader correctly identified that bar length — the primary encoding of a timeline — was meaningless for 11 of 14 rows because they were clamped to both edges. Carets now render at both clamped ends, and the subtitle states how many windows extend past the range.
+- The customer and margin charts **dropped months with no quotes from the axis entirely**, compressing time and producing an axis that read Aug, Nov, Feb, May, Aug, **Dec**. The axis is now built from the full selected range so a quiet month is a visible gap (Rule 4.1) rather than a removed one.
+
+**Theme defects (fixed in `cascadia-echarts-theme.js`, affects every future module):**
+
+- `cascadiaAnnotation` rendered a **6px filled circle in the series colour** at its anchor. Two independent readers mistook it for a data point. Removed; Rule 3.4's redundant linkage is now carried by proximity, which the rule explicitly sanctions.
+- Annotation labels carried a **filled paper-coloured halo box** that occluded the marks beneath them — one reader reported "a pale pink stub that looks like data" eating part of a bar, and a damaged data label. Replaced with a glyph outline, which gives the same legibility without covering anything.
+- `aria.decal` was **on by default**, painting hatching and checkerboard across every categorical series. Off by default now; available per chart for the case it is built for.
+
+**Other fixes:** the customer-exposure annotation was **clipped mid-word** at the canvas edge; the rep annotation was drawn **over the second bar**; grey was doing two jobs on the customer chart (below-cut and pooled remainder) and the pooled bar is now explicitly named; the "80%" claim was rounding 81.8% down and now states the real figure; the product-mix annotation read "Margin here: 52.0%" directly under a title claiming "52% of quoted value", which a reader flagged as a probable wiring bug — reworded.
+
+**Preference violations resolved:** panel ordering moved into the grid's own subtitle
+(2.7); the exception table's horizontal scroll eliminated at every width by folding two
+derivable columns, with the card list taking over below 1040px (5.5); filter state
+encoded in the URL so a view can be shared, which now agrees with what the provenance
+strip claims (6.10); the margin chart banked to its data (1.3).
+
+**Remaining preference score 10:** the price panel holds a fixed height so the stacked
+pair keeps a common frame (1.3, 5); gridlines deliberately not earned anywhere (2.4, 3);
+small-multiple panel headers state compliance and trend figures not recoverable from the
+panel marks (2, and see the Rule 3.2 amendment below).
+
+**A methodology limitation, recorded because it bounds the evidence:** every reader
+reported that they **could not avoid reading the title**, because it is rendered into the
+image as the largest text on the canvas. The "first sentence" answers are therefore
+softer evidence than a real human pass where the title can be covered. What the readers
+found — clipped words, phantom marks, unverifiable claims — holds regardless. **When you
+run this on people, crop the title out of the image first.**
 
 ## A rulebook defect this review surfaced
 
