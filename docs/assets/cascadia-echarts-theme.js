@@ -1,6 +1,6 @@
 /**
  * Cascadia ECharts theme — implements VIZ-PRINCIPLES.md v2.0 as defaults.
- * v2.0 · August 2026 · Aaron Robbins · Robbins Analytics
+ * v2.1 · August 2026 · Aaron Robbins · Robbins Analytics
  *
  * Usage:
  *   <script src="echarts.min.js"></script>
@@ -209,14 +209,24 @@
     if (!host) return null;
     opts = opts || {};
 
-    var existing = host.nextElementSibling;
-    if (existing && existing.classList &&
-        existing.classList.contains('cascadia-provenance')) {
-      existing.parentNode.removeChild(existing);
-    }
+    // Idempotency by OWNER, not by adjacency. Checking nextElementSibling was
+    // wrong the moment anything else could be inserted after the chart — the
+    // keyboard navigator (cascadiaNavigator) does exactly that, which pushed
+    // the strip out of the sibling slot and made every re-render append a new
+    // one. Rule 6.7 is INVARIANT and that failure is invisible until a reader
+    // changes a filter, so the guard now finds the strip wherever it sits.
+    var owner = host.id || (host.dataset.cascadiaOwner ||
+      (host.dataset.cascadiaOwner = 'c' + Math.abs(
+        (host.className + host.tagName).split('').reduce(function (a, ch) {
+          return ((a << 5) - a + ch.charCodeAt(0)) | 0; }, 0))));
+    var scope = host.parentNode || document;
+    Array.prototype.forEach.call(
+      scope.querySelectorAll('.cascadia-provenance[data-cascadia-prov="' + owner + '"]'),
+      function (n) { n.parentNode.removeChild(n); });
 
     var strip = document.createElement('div');
     strip.className = 'cascadia-provenance';
+    strip.setAttribute('data-cascadia-prov', owner);
     strip.setAttribute('role', 'note');
     strip.style.cssText =
       'display:flex;align-items:baseline;gap:7px;margin:2px 0 0 2px;' +
@@ -243,7 +253,10 @@
 
     strip.appendChild(tick);
     strip.appendChild(text);
-    host.insertAdjacentElement('afterend', strip);
+    // Keep reading order stable: chart, then navigator, then provenance —
+    // whichever helper happened to run first.
+    var nav = scope.querySelector('.cascadia-nav[data-cascadia-nav="' + owner + '"]');
+    (nav || host).insertAdjacentElement('afterend', strip);
     return strip;
   }
 
@@ -604,7 +617,7 @@
     serif: SERIF,
     sans: SANS,
     theme: theme,
-    version: '2.0',
+    version: '2.1',
 
     title: cascadiaTitle,
     provenance: cascadiaProvenance,
