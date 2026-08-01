@@ -117,9 +117,21 @@ def build_payload(con: sqlite3.Connection) -> dict:
     reason_counts = dict(con.execute(
         "SELECT no_agreement_reason, COUNT(*) FROM fact_quote_line_conformed "
         "WHERE no_agreement_reason IS NOT NULL GROUP BY 1").fetchall())
-    exposure_counts = dict(con.execute(
+    # Two scopes, named apart on purpose. Every line has an exposure_state (it
+    # describes funnel position), but exposure DOLLARS only exist for
+    # off-agreement lines. A single ambiguous "exposure_state_counts" would
+    # invite the page to caption an all-lines count as if it were exposure.
+    exposure_all = dict(con.execute(
+        "SELECT exposure_state, COUNT(*) FROM fact_quote_line_conformed "
+        "GROUP BY 1").fetchall())
+    exposure_off = dict(con.execute(
         "SELECT exposure_state, COUNT(*) FROM fact_quote_line_conformed "
         "WHERE match_status = 'priced_off_agreement' GROUP BY 1").fetchall())
+    # Headline dollars: leakage excludes documented, approved deviations.
+    exposure_usd_off = dict(con.execute(
+        "SELECT exposure_state, ROUND(SUM(margin_impact_usd), 2) "
+        "FROM fact_quote_line_conformed WHERE match_status = 'priced_off_agreement' "
+        "AND is_approved_exception = 0 GROUP BY 1").fetchall())
     date_min, date_max = con.execute(
         "SELECT MIN(quote_date), MAX(quote_date) FROM fact_quote_line_conformed").fetchone()
 
@@ -150,7 +162,9 @@ def build_payload(con: sqlite3.Connection) -> dict:
             },
             "match_status_counts": status_counts,
             "no_agreement_reason_counts": reason_counts,
-            "exposure_state_counts": exposure_counts,
+            "exposure_state_counts_all_lines": exposure_all,
+            "exposure_state_counts_off_agreement": exposure_off,
+            "exposure_usd_off_agreement_excl_approved": exposure_usd_off,
             "disclosure": generate.DISCLOSURE,
             "provenance": {
                 "source": "Synthetic data, seeded generator",
@@ -175,7 +189,15 @@ def build_payload(con: sqlite3.Connection) -> dict:
                 "exposure_state":
                     "realized = booked at the off-agreement price, the money is gone; "
                     "open = quoted but not yet booked, still fixable; "
-                    "closed_lost = the line never booked.",
+                    "closed_lost = the line never booked. EVERY line carries an "
+                    "exposure_state (it describes funnel position), but exposure "
+                    "DOLLARS exist only for priced_off_agreement lines.",
+                "leakage_totals":
+                    "Headline leakage excludes approved exceptions "
+                    "(is_approved_exception = 1). Those are documented, approved "
+                    "deviations, and some are priced above the agreement — folding "
+                    "them into leakage would overstate it and destroy the "
+                    "calibration story.",
                 "no_agreement_reason":
                     "agreement_lapsed = coverage ran out (distinct from closed_lost, "
                     "which means the quote never converted).",
