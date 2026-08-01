@@ -1,15 +1,29 @@
 /**
- * Cascadia ECharts theme — implements VIZ-PRINCIPLES.md as defaults.
- * v1.0 · Aaron Robbins · Robbins Analytics
+ * Cascadia ECharts theme — implements VIZ-PRINCIPLES.md v2.0 as defaults.
+ * v2.0 · August 2026 · Aaron Robbins · Robbins Analytics
  *
  * Usage:
- *   <script src="cascadia-echarts-theme.js"></script>   // after echarts
+ *   <script src="echarts.min.js"></script>
+ *   <script src="cascadia-echarts-theme.js"></script>
  *   const chart = echarts.init(el, 'cascadia');
  *
- * Helpers (optional but part of the system):
- *   cascadiaTitle(finding, subtitle)   → Rule 1 title block
- *   cascadiaProvenance(el, {source, asOf, flags}) → Rule 14 strip (DOM, below chart)
- *   CASCADIA.colors / CASCADIA.seq / CASCADIA.allPairsTrio
+ * Helpers:
+ *   cascadiaTitle(finding, subtitle)                  → Rule 3.1 title block
+ *   cascadiaProvenance(el, {source, asOf, flags, view}) → Rule 4.2 / 4.4 strip (idempotent)
+ *   cascadiaAnnotation(text, {color, coord, position}) → Rule 3.3 / 3.4 colour-matched annotation
+ *   cascadiaBankedHeight(values, width)               → Rule 1.3 banking to 45 degrees
+ *   cascadiaAccessible(el, {summary, tableId, label}) → Rule 5.1 / 5.2 access layers
+ *   cascadiaMotion()                                  → Rule 5.6 reduced-motion state
+ *
+ * Reference data:
+ *   CASCADIA.colors · .palette · .smallMarkPalette · .seq · .diverging
+ *   CASCADIA.maxCategories · .minTextPx · .encodingRank
+ *
+ * WHAT A THEME CANNOT ENFORCE. This file sets rendering defaults only. The
+ * selection layer (Rules 1.1-1.4), the explanation layer (3.2 title-data
+ * alignment, 3.4 annotation presence, 3.5 arrangement) and the whole access
+ * layer live in CHART-REVIEW.md, not here. Passing this theme is necessary
+ * and nowhere near sufficient.
  */
 (function (root) {
   'use strict';
@@ -30,51 +44,92 @@
   var SERIF = '"Source Serif 4", Georgia, "Times New Roman", serif';
   var SANS  = '"Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif';
 
+  // Rule 5.3 / Chartability: no text anywhere in a chart below 12px (9pt).
+  // This is why axis labels and the provenance strip are 12px in v2 where
+  // they were 11px and 10.5px in v1.0. The rule is INVARIANT; the slightly
+  // heavier strip is the price.
+  var MIN_TEXT = 12;
+
+  /** Rule 5.6 — true when the reader has asked for reduced motion. */
+  function reducedMotion() {
+    return typeof root.matchMedia === 'function' &&
+           root.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  var RM = reducedMotion();
+
   var theme = {
-    // Rule 7: fixed slot order, never cycled.
+    // Rule 2.3.1: fixed slot order, never cycled, never re-dealt on filter.
+    // Rule 2.3.5 caps a single chart at FOUR of these; the fifth exists so a
+    // family of charts can carry five entities. See CASCADIA.maxCategories.
     color: [C.evergreen, C.glacier, C.madrona, C.lupine, C.lichen],
 
     backgroundColor: C.paper,
 
-    textStyle: { fontFamily: SANS, color: C.basalt },
+    textStyle: { fontFamily: SANS, color: C.basalt, fontSize: MIN_TEXT },
 
-    // Rule 1: serif finding + sans subtitle in secondary ink.
+    // Rule 6.3: transitions run 250ms-2s and are suppressed under reduced motion.
+    animation: !RM,
+    animationDuration: RM ? 0 : 400,
+    animationDurationUpdate: RM ? 0 : 500,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
+
+    // Rule 5.1: a floor, not a solution. ECharts' aria is one generated label
+    // and no keyboard support (apache/echarts#18585). The real access layer is
+    // DOM-side — see cascadiaAccessible().
+    //
+    // decal is DELIBERATELY OFF. It is a genuine second non-colour channel for
+    // Rule 2.3.2, but it renders as visible hatching and checkerboard across
+    // every categorical series, which reads as texture decoration under Rule
+    // 2.5 and makes de-emphasised Rain series look like loading placeholders.
+    // Rule 3.6 already requires a direct label on every series, and a label is
+    // the stronger non-colour channel. Turn decal on per chart — via
+    // `aria: { decal: { show: true } }` in setOption — for the case it is
+    // actually built for: a categorical chart where direct labels genuinely
+    // will not fit and a legend is unavoidable.
+    aria: { enabled: true, decal: { show: false } },
+
+    // Rule 3.1: serif finding + sans subtitle in secondary ink, positioned top.
     title: {
       textStyle:    { fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: C.basalt },
-      subtextStyle: { fontFamily: SANS,  fontSize: 12, color: C.slateMoss },
+      subtextStyle: { fontFamily: SANS,  fontSize: MIN_TEXT, color: C.slateMoss },
       left: 0, top: 0, itemGap: 6
     },
 
+    // Right padding reserves room for end-of-line direct labels (Rule 3.6).
     grid: { left: 8, right: 90, top: 64, bottom: 30, containLabel: true },
 
-    // Rule 3: legends off by default — direct-label instead (see demo).
+    // Rule 3.6: legends off by default — direct-label instead.
     legend: { show: false },
 
-    // Category axis: quiet line, no ticks fencing the data. Rule 2/9.
     categoryAxis: {
       axisLine:  { show: true, lineStyle: { color: C.mist, width: 1 } },
       axisTick:  { show: false },
-      axisLabel: { color: C.slateMoss, fontSize: 11, fontFamily: SANS, rotate: 0 }, // Rule 12
+      axisLabel: { color: C.slateMoss, fontSize: MIN_TEXT, fontFamily: SANS, rotate: 0 }, // Rule 2.8
       splitLine: { show: false }
     },
 
-    // Value axis: no axis line, no gridlines unless earned (Rule 2).
+    // Rule 2.4: no gridlines unless earned by scanning behaviour. Opt back in
+    // per chart. NOTE the v2 trigger change: v1.0 said "no tooltip available",
+    // which permanently suppressed gridlines on interactive pages. The trigger
+    // is now whether the reader decodes off the axis while scanning.
     valueAxis: {
       axisLine:  { show: false },
       axisTick:  { show: false },
-      axisLabel: { color: C.slateMoss, fontSize: 11, fontFamily: SANS },
-      splitLine: { show: false },       // opt back in per chart when Rule 2 is met
+      axisLabel: { color: C.slateMoss, fontSize: MIN_TEXT, fontFamily: SANS },
+      splitLine: { show: false },
       splitNumber: 4
     },
     logAxis:  { splitLine: { show: false } },
     timeAxis: {
       axisLine:  { show: true, lineStyle: { color: C.mist } },
       axisTick:  { show: false },
-      axisLabel: { color: C.slateMoss, fontSize: 11 },
+      axisLabel: { color: C.slateMoss, fontSize: MIN_TEXT, fontFamily: SANS },
       splitLine: { show: false }
     },
 
-    // Rule 9: flat marks. 2px lines, no shadows, square bar caps.
+    // Rule 2.5: flat marks. 2px lines, no shadows, square bar caps.
     line: {
       itemStyle: { borderWidth: 0 },
       lineStyle: { width: 2 },
@@ -83,32 +138,49 @@
       emphasis: { lineStyle: { width: 2.5 } }
     },
     bar: {
-      itemStyle: { borderRadius: 0 },   // Rule 9: flat ends
+      // borderRadius 0 is Rule 2.5. The 1px Paper border is Chartability's
+      // adjacent-mark separation (Rule 5.3) and matters most on stacked bars.
+      itemStyle: { borderRadius: 0, borderColor: C.paper, borderWidth: 1 },
       barMaxWidth: 42
     },
     scatter: { symbolSize: 9 },
 
-    // Rule 8: full precision lives here, labels stay rounded.
+    // Rule 2.6 — REVERSED IN v2. A plain, unexploded, two-dimensional pie or
+    // donut is now permitted where the sole task is reading a single share of
+    // a whole. Angle is the least important cue in a pie (Skau & Kosara 2016);
+    // area is primary (Kosara 2019); no significant difference against stacked
+    // bars (Bailey & Gleicher 2025). Sorted bars remain the DEFAULT for ranking
+    // and multi-category comparison, which is what most business reporting is.
+    // Exploded, elliptical, 3D and square pies remain banned outright.
+    pie: {
+      itemStyle: { borderColor: C.paper, borderWidth: 1, borderRadius: 0 },
+      label: { show: true, fontFamily: SANS, fontSize: MIN_TEXT, color: C.basalt },
+      labelLine: { lineStyle: { color: C.mist } },
+      avoidLabelOverlap: true,
+      startAngle: 90,
+      selectedOffset: 0                 // never explode
+    },
+
+    // Rule 2.5: gauges and speedometers are banned. Left present and unstyled
+    // so accidental use is conspicuous in review.
+    gauge: {},
+
+    // Rule 2.9: full precision lives here; visible labels stay rounded.
     tooltip: {
       backgroundColor: '#FFFFFF',
       borderColor: C.mist, borderWidth: 1,
-      textStyle: { color: C.basalt, fontFamily: SANS, fontSize: 12 },
+      textStyle: { color: C.basalt, fontFamily: SANS, fontSize: MIN_TEXT },
       axisPointer: {
         lineStyle: { color: C.rain, width: 1 },
         crossStyle: { color: C.rain, width: 1 }
       },
       extraCssText: 'box-shadow: none; border-radius: 2px; padding: 8px 10px;'
-    },
-
-    // Gauges are banned (Rule 9) — styled to look broken on purpose is not
-    // an option in a theme, so: do not use series type "gauge" or "pie".
-    pie:   { label: { show: true } },   // present only so accidental use is visible in review
-    gauge: {}
+    }
   };
 
   // ---- helpers ---------------------------------------------------------
 
-  /** Rule 1 title block: finding sentence + metric subtitle. */
+  /** Rule 3.1 title block: finding sentence + metric subtitle, at the top. */
   function cascadiaTitle(finding, subtitle) {
     return {
       text: finding,
@@ -119,50 +191,236 @@
     };
   }
 
-  /** Rule 14 provenance strip, appended as DOM directly under the chart el. */
+  /**
+   * Rule 4.2 provenance strip, plus Rule 4.4's fourth segment.
+   *
+   * IDEMPOTENT (Rule 6.7). v1.0 appended with insertAdjacentElement on every
+   * call, so an interactive chart that re-rendered on filter change grew a
+   * second strip, then a third. This version replaces any existing strip for
+   * the same host.
+   *
+   * `source` and `asOf` describe the DATASET and must not change when a
+   * control changes. `view` describes the reader's filter state and belongs
+   * in the fourth segment — never in place of the source.
+   */
   function cascadiaProvenance(el, opts) {
     var host = (typeof el === 'string') ? document.getElementById(el) : el;
     if (!host) return null;
+    opts = opts || {};
+
+    var existing = host.nextElementSibling;
+    if (existing && existing.classList &&
+        existing.classList.contains('cascadia-provenance')) {
+      existing.parentNode.removeChild(existing);
+    }
+
     var strip = document.createElement('div');
     strip.className = 'cascadia-provenance';
     strip.setAttribute('role', 'note');
     strip.style.cssText =
       'display:flex;align-items:baseline;gap:7px;margin:2px 0 0 2px;' +
-      'font:10.5px/1.5 ' + SANS + ';color:' + C.slateMoss + ';';
+      'font:' + MIN_TEXT + 'px/1.5 ' + SANS + ';color:' + C.slateMoss + ';';
+
     var tick = document.createElement('span');
     tick.style.cssText =
-      'display:inline-block;width:3px;height:11px;background:' + C.evergreen +
-      ';flex:0 0 3px;position:relative;top:1px;';
-    var parts = [opts.source ? 'Source: ' + opts.source : null,
-                 opts.asOf   ? 'as of ' + opts.asOf     : null,
-                 opts.flags  || 'no adjustments'];
+      'display:inline-block;width:3px;height:' + (MIN_TEXT - 1) + 'px;background:' +
+      C.evergreen + ';flex:0 0 3px;position:relative;top:1px;';
+
+    var parts = [
+      opts.source ? 'Source: ' + opts.source : null,
+      opts.asOf   ? 'as of ' + opts.asOf     : null,
+      opts.flags  || 'no adjustments'
+    ];
+    // Rule 4.4 — on an interactive artifact the strip reports the view too.
+    // Pass view: 'unfiltered' explicitly rather than omitting it, so a
+    // screenshotted filtered view can never carry a strip that describes the
+    // full dataset.
+    if (opts.view) parts.push(opts.view);
+
     var text = document.createElement('span');
     text.textContent = parts.filter(Boolean).join(' · ');
+
     strip.appendChild(tick);
     strip.appendChild(text);
     host.insertAdjacentElement('afterend', strip);
     return strip;
   }
 
+  /**
+   * Rules 3.3 / 3.4 — an annotation at the data, colour-matched to the series
+   * it explains.
+   *
+   * The colour match is not decoration. Ajani et al. (TVCG 2022) measured the
+   * focus treatment as three parts — highlight, sentence at the data, and the
+   * annotation text matched to the highlight — producing 2.5-3x higher recall
+   * of the intended conclusion. v1.0 implemented only the highlight.
+   *
+   * Returns a markPoint config. Keep the text under ~14 words.
+   */
+  function cascadiaAnnotation(text, opts) {
+    opts = opts || {};
+    return {
+      symbol: 'circle',
+      symbolSize: 6,
+      data: [{
+        coord: opts.coord,
+        itemStyle: { color: opts.color || C.evergreen },
+        label: {
+          show: true,
+          formatter: text,
+          position: opts.position || 'top',
+          distance: opts.distance == null ? 10 : opts.distance,
+          color: opts.color || C.evergreen,     // colour-matched to the mark
+          fontFamily: SERIF,
+          fontSize: opts.fontSize || 13,
+          align: opts.align || 'center',
+          width: opts.width || 180,
+          overflow: 'break',
+          backgroundColor: 'rgba(252,252,250,0.85)',  // readability, not decoration
+          padding: [2, 4]
+        }
+      }]
+    };
+  }
+
+  /**
+   * Rule 1.3 — banking to 45 degrees (Cleveland 1985; Heer & Agrawala 2006).
+   *
+   * Returns the pixel height at which the average absolute segment slope of
+   * `values` approaches 45 degrees for the given plot width. Use it to set the
+   * chart container height instead of a global CSS default, which is what
+   * silently decides how every trend in a portfolio reads.
+   *
+   * Clamped to a sane range; returns null on degenerate input.
+   */
+  function cascadiaBankedHeight(values, width, opts) {
+    opts = opts || {};
+    if (!Array.isArray(values) || values.length < 2 || !width) return null;
+    var nums = values.filter(function (v) { return typeof v === 'number' && isFinite(v); });
+    if (nums.length < 2) return null;
+
+    var min = Math.min.apply(null, nums), max = Math.max.apply(null, nums);
+    var range = max - min;
+    if (range === 0) return null;
+
+    var n = nums.length - 1;
+    var dx = width / n;                       // horizontal px per segment
+    var sumAbsDy = 0;
+    for (var i = 0; i < n; i++) sumAbsDy += Math.abs(nums[i + 1] - nums[i]);
+    var meanAbsDyData = sumAbsDy / n;
+    if (meanAbsDyData === 0) return null;
+
+    // Slope 1 in pixel space => height * (meanAbsDy / range) === dx
+    var height = dx * range / meanAbsDyData;
+    var lo = opts.min || 140, hi = opts.max || 520;
+    return Math.round(Math.max(lo, Math.min(hi, height)));
+  }
+
+  /**
+   * Rules 5.1 / 5.2 — the access layers a theme can reach.
+   *
+   * Sets role and an authored accessible name on the container, and points it
+   * at the visible summary and data table. The KEYBOARD LAYER IS NOT HERE and
+   * cannot be: ECharts renders to canvas, which is not in the DOM, so the
+   * navigable structure must be built as sibling focusable elements (see
+   * Data Navigator, Elavsky et al. 2023). This helper gets you layers 1 and 2
+   * and makes the absence of layer 3 explicit rather than silent.
+   *
+   * `label` must be L1 + L2 only — chart type, encodings, axis ranges, units,
+   * then extrema and comparisons. NOT interpretation. Blind readers ranked
+   * domain interpretation among the LEAST useful description content
+   * (Lundgard & Satyanarayan, TVCG 2022); "insightful" alt text is a
+   * regression, not a bonus.
+   */
+  function cascadiaAccessible(el, opts) {
+    var host = (typeof el === 'string') ? document.getElementById(el) : el;
+    if (!host) return null;
+    opts = opts || {};
+
+    host.setAttribute('role', 'img');
+    if (opts.label) host.setAttribute('aria-label', opts.label);
+
+    var describedBy = [];
+    if (opts.summaryId) describedBy.push(opts.summaryId);
+    if (opts.tableId)   describedBy.push(opts.tableId);
+    if (describedBy.length) host.setAttribute('aria-describedby', describedBy.join(' '));
+
+    if (!opts.tableId && !opts.tableExempt) {
+      // Rule 5.1 is INVARIANT. Fail loudly in development rather than shipping
+      // a chart that quietly has no non-visual route to its data.
+      if (root.console && root.console.warn) {
+        root.console.warn('[cascadia] Rule 5.1: no data table wired for', host.id || host,
+          '- pass tableId, or tableExempt:true if the title and summary carry the full content.');
+      }
+    }
+    return host;
+  }
+
+  /** Rule 5.6 — expose the reduced-motion state so pages can branch on it. */
+  function cascadiaMotion() {
+    return { reduced: reducedMotion(), duration: reducedMotion() ? 0 : 400 };
+  }
+
   var API = {
     colors: C,
     palette: theme.color.slice(),
-    allPairsTrio: [C.evergreen, C.glacier, C.lichen], // Rule 15 cap for scatter/small multiples
+
+    // Rule 2.3.4 — scatter points under 8px and strokes under 2px use only
+    // these three. Colour difference falls off sharply on small symmetric
+    // marks (Szafir, TVCG 2018), and the Cascadia hues sit in a ten-point
+    // lightness band, so there is no lightness fallback when chroma shrinks.
+    smallMarkPalette: [C.evergreen, C.glacier, C.lichen],
+    allPairsTrio:     [C.evergreen, C.glacier, C.lichen],   // v1.0 name, kept
+
+    // Rule 2.3.5 — at most four encoded categories in a single chart.
+    // Five only where every series is directly labelled and the chart is
+    // wider than 768px. Convergent: UK Gov Analysis Function says four,
+    // Datawrapper says three to four, Chartability caps at five.
+    maxCategories: 4,
+    minTextPx: MIN_TEXT,
+
     seq: ['#8FBA9F', '#65A583', '#3D8D63', '#1E7A4C', '#0F5535'],
     diverging: { neg: C.madrona, mid: C.rain, pos: C.evergreen },
+
+    // Rule 1.2 — Cleveland & McGill (1984), most to least accurate.
+    // Reference, not enforcement: the theme cannot see what you are asking
+    // the reader to compare.
+    encodingRank: [
+      'position on a common scale',
+      'position on non-aligned scales',
+      'length / direction / angle',
+      'area',
+      'volume / curvature',
+      'shading / colour saturation'
+    ],
+
+    // Rule 1.1 — declare one before choosing a form.
+    relationships: ['deviation', 'correlation', 'ranking', 'distribution',
+                    'change over time', 'magnitude', 'part-to-whole',
+                    'spatial', 'flow'],
+
     serif: SERIF,
     sans: SANS,
     theme: theme,
+    version: '2.0',
+
     title: cascadiaTitle,
-    provenance: cascadiaProvenance
+    provenance: cascadiaProvenance,
+    annotation: cascadiaAnnotation,
+    bankedHeight: cascadiaBankedHeight,
+    accessible: cascadiaAccessible,
+    motion: cascadiaMotion
   };
 
   if (root.echarts && root.echarts.registerTheme) {
     root.echarts.registerTheme('cascadia', theme);
   }
   root.CASCADIA = API;
-  root.cascadiaTitle = cascadiaTitle;
-  root.cascadiaProvenance = cascadiaProvenance;
+  root.cascadiaTitle        = cascadiaTitle;
+  root.cascadiaProvenance   = cascadiaProvenance;
+  root.cascadiaAnnotation   = cascadiaAnnotation;
+  root.cascadiaBankedHeight = cascadiaBankedHeight;
+  root.cascadiaAccessible   = cascadiaAccessible;
 
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : this);
