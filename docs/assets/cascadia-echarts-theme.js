@@ -13,6 +13,7 @@
  *   cascadiaAnnotation(text, {color, coord, position}) → Rule 3.3 / 3.4 colour-matched annotation
  *   cascadiaBankedHeight(values, width)               → Rule 1.3 banking to 45 degrees
  *   cascadiaAccessible(el, {summary, tableId, label}) → Rule 5.1 / 5.2 access layers
+ *   cascadiaNavigator(el, {chart, label, series, onFocus}) → Rule 5.1 layer 3, keyboard
  *   cascadiaMotion()                                  → Rule 5.6 reduced-motion state
  *
  * Reference data:
@@ -364,6 +365,199 @@
     return host;
   }
 
+
+  /**
+   * Rule 5.1 layer 3 — keyboard-navigable structure over the data points.
+   *
+   * ECharts draws to canvas, which is not in the DOM, so there is nothing for a
+   * screen reader or a keyboard to traverse. This builds the missing structure
+   * as a sibling element and drives it from the same arrays the chart and its
+   * data table already use — the Data Navigator pattern (Elavsky, Nadolskis &
+   * Moritz, IEEE VIS 2023), where navigation rules are decoupled from input
+   * modality so keyboard, screen reader and switch all drive one structure.
+   *
+   * ONE tab stop per chart, not one per datum. Chartability is explicit that
+   * putting a tabindex on every mark is the wrong build: "Interactive elements
+   * must have a tab stop, while non-interactive elements must not." Arrow keys
+   * move a cursor inside that single stop.
+   *
+   * Bindings are fixed across the system (Rule 5.1):
+   *   Down  descend a level   chart -> series -> point
+   *   Up    ascend a level
+   *   Left / Right   previous / next sibling, bounded, never wrapping silently
+   *   Home / End     first / last sibling
+   *   Enter          full detail of the current node
+   *   Escape         back to chart level
+   *
+   * Usage:
+   *   cascadiaNavigator(el, {
+   *     chart:  echartsInstance,          // optional, for the visual cursor
+   *     label:  'Chart-level announcement, L1 + L2',
+   *     series: [{ name, points: [{ label, value, seriesIndex, dataIndex }] }],
+   *     onFocus: function (node) { ... }  // optional extra visual highlight
+   *   });
+   *
+   * Idempotent: re-calling replaces the navigator for the same host, so a chart
+   * that re-renders on every filter change does not accumulate them.
+   */
+  function cascadiaNavigator(el, spec) {
+    var host = (typeof el === 'string') ? document.getElementById(el) : el;
+    if (!host || !spec || !spec.series) return null;
+
+    var prev = host.parentNode && host.parentNode.querySelector(
+      '[data-cascadia-nav="' + (host.id || '') + '"]');
+    if (prev) prev.parentNode.removeChild(prev);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'cascadia-nav';
+    wrap.setAttribute('data-cascadia-nav', host.id || '');
+    wrap.style.cssText = 'margin:2px 0 0;';
+
+    var btn = document.createElement('div');
+    btn.tabIndex = 0;
+    btn.setAttribute('role', 'application');
+    btn.setAttribute('aria-roledescription', 'chart navigator');
+    btn.setAttribute('aria-label',
+      'Chart navigator. ' + (spec.label || '') +
+      ' Press the down arrow to enter, left and right to move, up to go back.');
+    btn.style.cssText =
+      'display:inline-block;font:' + MIN_TEXT + 'px/1.5 ' + SANS + ';color:' + C.slateMoss +
+      ';border:1px solid ' + C.mist + ';border-radius:2px;padding:3px 9px;' +
+      'min-height:24px;cursor:default;background:' + C.paper + ';';
+    btn.textContent = 'Explore this chart by keyboard';
+
+    // Announcements. polite, atomic — a cursor move should not interrupt, but
+    // it must be read whole rather than word by word.
+    var live = document.createElement('p');
+    live.setAttribute('aria-live', 'polite');
+    live.setAttribute('aria-atomic', 'true');
+    live.style.cssText =
+      'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;' +
+      'clip:rect(0 0 0 0);white-space:nowrap;border:0;';
+
+    // Visible cursor text for sighted keyboard users — the same string the
+    // screen reader gets, so the two experiences do not diverge.
+    var cursor = document.createElement('span');
+    cursor.style.cssText =
+      'display:none;margin-left:9px;font:' + MIN_TEXT + 'px/1.5 ' + SANS +
+      ';color:' + C.basalt + ';';
+
+    wrap.appendChild(btn);
+    wrap.appendChild(cursor);
+    wrap.appendChild(live);
+    host.insertAdjacentElement('afterend', wrap);
+
+    var LEVEL = { CHART: 0, SERIES: 1, POINT: 2 };
+    var level = LEVEL.CHART, si = 0, pi = 0;
+
+    function say(msg) {
+      live.textContent = '';
+      // force a re-announcement even when the string repeats
+      root.setTimeout(function () { live.textContent = msg; }, 30);
+      cursor.textContent = msg;
+      cursor.style.display = msg ? 'inline' : 'none';
+    }
+
+    function pts(i) { return (spec.series[i] && spec.series[i].points) || []; }
+
+    function highlight() {
+      if (!spec.chart || level !== LEVEL.POINT) return;
+      var p = pts(si)[pi];
+      if (!p || p.seriesIndex == null || p.dataIndex == null) return;
+      try {
+        spec.chart.dispatchAction({ type: 'downplay' });
+        spec.chart.dispatchAction({ type: 'highlight',
+          seriesIndex: p.seriesIndex, dataIndex: p.dataIndex });
+        spec.chart.dispatchAction({ type: 'showTip',
+          seriesIndex: p.seriesIndex, dataIndex: p.dataIndex });
+      } catch (e) { /* a chart form that cannot highlight is not a failure */ }
+    }
+    function clearHighlight() {
+      if (!spec.chart) return;
+      try {
+        spec.chart.dispatchAction({ type: 'downplay' });
+        spec.chart.dispatchAction({ type: 'hideTip' });
+      } catch (e) {}
+    }
+
+    function announce() {
+      if (level === LEVEL.CHART) {
+        say('Chart level. ' + spec.series.length + ' ' +
+            (spec.series.length === 1 ? 'series' : 'series') + '. ' +
+            'Down arrow to enter.');
+        clearHighlight();
+      } else if (level === LEVEL.SERIES) {
+        var s = spec.series[si];
+        say('Series ' + (si + 1) + ' of ' + spec.series.length + ': ' + s.name +
+            '. ' + pts(si).length + ' points' + (s.summary ? '. ' + s.summary : '') +
+            '. Down arrow for points.');
+        clearHighlight();
+      } else {
+        var p = pts(si)[pi];
+        say('Point ' + (pi + 1) + ' of ' + pts(si).length + '. ' +
+            (p ? p.label + ': ' + p.value : 'no value'));
+        highlight();
+      }
+      if (spec.onFocus) spec.onFocus({ level: level, seriesIndex: si, pointIndex: pi });
+    }
+
+    function move(delta) {
+      if (level === LEVEL.SERIES) {
+        var n = spec.series.length, next = si + delta;
+        if (next < 0)  { say('Start of series list. ' + spec.series[si].name); return; }
+        if (next >= n) { say('End of series list. ' + spec.series[si].name); return; }
+        si = next; pi = 0; announce();
+      } else if (level === LEVEL.POINT) {
+        var m = pts(si).length, np = pi + delta;
+        // Bounded cursor (Rule 5.1) — announce the boundary, never wrap silently
+        if (np < 0)  { say('Start of ' + spec.series[si].name + '.'); return; }
+        if (np >= m) { say('End of ' + spec.series[si].name + '.'); return; }
+        pi = np; announce();
+      }
+    }
+
+    btn.addEventListener('keydown', function (e) {
+      var k = e.key;
+      if (['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','Home','End','Enter','Escape']
+          .indexOf(k) < 0) return;
+      e.preventDefault(); e.stopPropagation();
+      if (k === 'ArrowDown') {
+        if (level === LEVEL.CHART && spec.series.length) { level = LEVEL.SERIES; si = 0; pi = 0; announce(); }
+        else if (level === LEVEL.SERIES && pts(si).length) { level = LEVEL.POINT; pi = 0; announce(); }
+        else say('Lowest level reached.');
+      } else if (k === 'ArrowUp') {
+        if (level === LEVEL.POINT) { level = LEVEL.SERIES; announce(); }
+        else if (level === LEVEL.SERIES) { level = LEVEL.CHART; announce(); }
+        else say('Chart level. Down arrow to enter.');
+      } else if (k === 'ArrowRight') move(1);
+      else if (k === 'ArrowLeft') move(-1);
+      else if (k === 'Home') {
+        if (level === LEVEL.SERIES) { si = 0; pi = 0; announce(); }
+        else if (level === LEVEL.POINT) { pi = 0; announce(); }
+      } else if (k === 'End') {
+        if (level === LEVEL.SERIES) { si = spec.series.length - 1; pi = 0; announce(); }
+        else if (level === LEVEL.POINT) { pi = pts(si).length - 1; announce(); }
+      } else if (k === 'Enter') {
+        if (level === LEVEL.POINT) {
+          var p = pts(si)[pi];
+          say(spec.series[si].name + ', ' + (p ? p.label + ': ' + (p.detail || p.value) : ''));
+        } else announce();
+      } else if (k === 'Escape') { level = LEVEL.CHART; si = 0; pi = 0; announce(); }
+    });
+
+    btn.addEventListener('focus', function () {
+      btn.style.borderColor = C.evergreen;
+      if (level === LEVEL.CHART) say('Chart navigator ready. Down arrow to enter.');
+    });
+    btn.addEventListener('blur', function () {
+      btn.style.borderColor = C.mist;
+      cursor.style.display = 'none';
+      clearHighlight();
+    });
+
+    return wrap;
+  }
+
   /** Rule 5.6 — expose the reduced-motion state so pages can branch on it. */
   function cascadiaMotion() {
     return { reduced: reducedMotion(), duration: reducedMotion() ? 0 : 400 };
@@ -417,6 +611,7 @@
     annotation: cascadiaAnnotation,
     bankedHeight: cascadiaBankedHeight,
     accessible: cascadiaAccessible,
+    navigator: cascadiaNavigator,
     motion: cascadiaMotion
   };
 
@@ -429,6 +624,7 @@
   root.cascadiaAnnotation   = cascadiaAnnotation;
   root.cascadiaBankedHeight = cascadiaBankedHeight;
   root.cascadiaAccessible   = cascadiaAccessible;
+  root.cascadiaNavigator    = cascadiaNavigator;
 
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : this);
