@@ -595,7 +595,27 @@
           itemStyle: { color: C.lichen },
           label: { show: true, position: 'right', formatter: function (p) {
             return p.dataIndex === order.length - 1 ? 'No agreement' : ''; },
-            color: C.lichen, fontSize: 12 } }
+            color: C.lichen, fontSize: 12 },
+          // Rule 3.4 — the title's claim is a SHARE and the bars carry counts,
+          // so the headline figure was readable nowhere on the canvas. Anchored
+          // at the month whose share is closest to the overall figure, so the
+          // reader can see one instance of the number the title asserts.
+          markPoint: (function () {
+            var tgt = (msc.priced_off_agreement + msc.no_governing_agreement) / LINES.length;
+            var best = 0, bestD = Infinity;
+            order.forEach(function (m, i) {
+              var t = months[m].to + months[m].off + months[m].none;
+              if (!t) return;
+              var d = Math.abs((months[m].off + months[m].none) / t - tgt);
+              if (d < bestD) { bestD = d; best = i; }
+            });
+            var mk = order[best];
+            var tot = months[mk].to + months[mk].off + months[mk].none;
+            return cascadiaAnnotation(
+              pct((months[mk].off + months[mk].none) / tot, 0) + ' this month',
+              { color: C.lichen, coord: [best, tot], position: 'top', distance: 8,
+                width: 104, align: 'center' });
+          })() }
       ]
     });
     strip(cStatus, 'unfiltered — all 3,003 lines');
@@ -893,10 +913,13 @@
           }),
           label: { show: true, position: 'right', color: C.basalt, fontSize: 12,
                    formatter: function (p) { return usd(p.value); } },
+          // Was 'insideRight' at the bar's own end, printing on top of the
+          // $1.3M value label. Rule 3.4 keeps proximity as the linkage channel;
+          // it does not require overlap. Moved above the bar.
           markPoint: cascadiaAnnotation(
             'Top account: ' + pct(plot[0].v / sumShown, 0),
-            { color: C.evergreen, coord: [plot[0].v, 0], position: 'insideRight',
-              distance: 10, width: 120, align: 'right' })
+            { color: C.evergreen, coord: [plot[0].v * 0.5, 0], position: 'top',
+              distance: 10, width: 160, align: 'center' })
         }]
       });
       strip(cCust, vt);
@@ -1034,10 +1057,19 @@
                    (sumScope ? ' (' + pct(dollars[i] / sumScope) + ' of exposure)' : '');
           }
         },
+        // Rule 2.1 — the threshold steps are NOT evenly spaced in dollars
+        // (1K, 1.5K, 2.5K ... 10K), so a category axis draws the $40K-$50K gap
+        // at the same width as $0-$1K. This title makes a claim about RATE,
+        // rate is slope, and that distortion falsifies slope by up to 10x.
+        // A value axis puts every sampled threshold where its dollars say.
+        // Found by a Rule 7.4 reading panel, 2026-08-02.
         xAxis: [
-          { type: 'category', gridIndex: 0, data: steps.map(function (v) { return usd(v); }),
-            axisLabel: { show: false } },
-          { type: 'category', gridIndex: 1, data: steps.map(function (v) { return usd(v); }) }
+          { type: 'value', gridIndex: 0, min: 0, max: 50000,
+            axisLabel: { show: false },
+            axisTick: { show: false } },
+          { type: 'value', gridIndex: 1, min: 0, max: 50000,
+            interval: 10000,
+            axisLabel: { formatter: function (v) { return usd(v); } } }
         ],
         yAxis: [
           { type: 'value', gridIndex: 0, name: 'exceptions', nameLocation: 'end', nameGap: 8,
@@ -1047,24 +1079,24 @@
             axisLabel: { formatter: function (v) { return usd(v); } } }
         ],
         series: [
-          { name: 'Exceptions surviving', type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: counts,
+          { name: 'Exceptions surviving', type: 'line', xAxisIndex: 0, yAxisIndex: 0,
+            data: steps.map(function (t, i) { return [t, counts[i]]; }),
             lineStyle: { width: 2, color: C.evergreen }, itemStyle: { color: C.evergreen },
             showSymbol: true, symbolSize: 5,
             endLabel: { show: true, formatter: 'count', color: C.evergreen, fontSize: 12, distance: 6 },
             markPoint: vals.length ? cascadiaAnnotation(
               num(atNow) + ' ' + plural(atNow, 'line'),
-              { color: C.evergreen, coord: [iNow, atNow],
-                position: iNow <= 3 ? 'right' : 'left', distance: 12, width: 90,
-                align: iNow <= 3 ? 'left' : 'right' }) : undefined },
-          { name: 'Exposure surviving', type: 'line', xAxisIndex: 1, yAxisIndex: 1, data: dollars,
+              { color: C.evergreen, coord: [steps[iNow], atNow],
+                position: 'bottom', distance: 10, width: 90, align: 'left' }) : undefined },
+          { name: 'Exposure surviving', type: 'line', xAxisIndex: 1, yAxisIndex: 1,
+            data: steps.map(function (t, i) { return [t, dollars[i]]; }),
             lineStyle: { width: 2, color: C.madrona }, itemStyle: { color: C.madrona },
             showSymbol: true, symbolSize: 5,
             endLabel: { show: true, formatter: 'dollars', color: C.madrona, fontSize: 12, distance: 6 },
             markPoint: vals.length ? cascadiaAnnotation(
               usd(dollarsNow),
-              { color: C.madrona, coord: [iNow, dollarsNow],
-                position: iNow <= 3 ? 'right' : 'left', distance: 12, width: 90,
-                align: iNow <= 3 ? 'left' : 'right' }) : undefined }
+              { color: C.madrona, coord: [steps[iNow], dollarsNow],
+                position: 'bottom', distance: 10, width: 90, align: 'left' }) : undefined }
         ]
       });
       strip(cThr, vt);
@@ -1143,7 +1175,9 @@
         title: titleFor(cCause, 
           num(noneScope.length) + ' ' + plural(noneScope.length, 'line') +
           ' had no agreement to price against',
-          'Lines with no governing agreement, by cause'),
+          'Lines with no governing agreement, by cause · ' +
+          arr.map(function (r) { return num(r.n); }).join(' + ') + ' = ' +
+          num(noneScope.length)),
         grid: { left: 8, right: 132, top: LAST_TOP, bottom: 30, containLabel: true },
         tooltip: {
           trigger: 'item',
@@ -1157,8 +1191,12 @@
         yAxis: { type: 'category', inverse: true, data: arr.map(function (r) { return r.name; }) },
         series: [{
           type: 'bar',
-          data: arr.map(function (r, i) {
-            return { value: r.n, itemStyle: { color: i === 0 ? C.lichen : C.rain } };
+          // Rule 3.3 — the title is about all three causes, not the largest one,
+          // so singling out the top bar made the emphasis arbitrary. A blind
+          // reader on the 2026-08-02 panel said the highlight "reads as somewhat
+          // arbitrary". One claim, one treatment: all three carry the category.
+          data: arr.map(function (r) {
+            return { value: r.n, itemStyle: { color: C.lichen } };
           }),
           label: { show: true, position: 'right', color: C.basalt, fontSize: 12 },
           markPoint: cascadiaAnnotation('A lapsed agreement is not a lost quote', {

@@ -764,7 +764,17 @@
               : cust.name + ' quoted below agreement in ' + monthsOff + ' of ' +
                 gapObs.length + ' ' + plural(gapObs.length, 'month')),
         'Volume-weighted quoted price against agreed price, monthly, as a percent gap · ' +
-        'covered lines only · zero means priced to agreement'),
+        'covered lines only · zero means priced to agreement · one dot per month' +
+        // Rule 4.1 — a break in the line is never left bare. A gap without a
+        // stated cause reads as a data problem and lowers reader confidence
+        // without telling them why (Song & Szafir 2018). Found by a Rule 7.4
+        // reading panel, 2026-08-02: three of four seats saw the break and
+        // none could tell what it meant.
+        ((months.length - gapObs.length) > 0
+          ? ' · ' + num(months.length - gapObs.length) + ' ' +
+            plural(months.length - gapObs.length, 'month') + ' with no covered lines ' +
+            ((months.length - gapObs.length) === 1 ? 'is' : 'are') + ' drawn as a break, not a zero'
+          : '')),
       grid: { left: 8, right: 126, top: LAST_TOP, bottom: 26, containLabel: true },
       tooltip: {
         trigger: 'axis',
@@ -794,7 +804,16 @@
           lineStyle: { width: 2, color: C.rain, type: 'dashed' }, z: 2,
           endLabel: { show: true, formatter: 'At agreement', color: C.slateMoss,
                       fontSize: 12, distance: 6, offset: [0, 11] } },
-        { name: 'Gap to agreed', type: 'line', data: gapSeries, symbol: 'none', connectNulls: false,
+        // Rule 1.1 — the title makes a COUNT claim ("below agreement in N of M
+        // months"). A bare line cannot be counted, and points sitting on the
+        // zero line make below-vs-at ambiguous exactly where the claim lives.
+        // One symbol per month makes the count readable off the marks.
+        { name: 'Gap to agreed', type: 'line', connectNulls: false,
+          data: gapSeries.map(function (v) {
+            return v == null ? null : { value: v, itemStyle: {
+              color: v < -0.005 ? C.madrona : C.evergreen } };
+          }),
+          symbol: 'circle', showSymbol: true, symbolSize: 5,
           lineStyle: { width: 2, color: C.evergreen }, z: 3,
           endLabel: { show: true, formatter: 'Quoted', color: C.evergreen,
                       fontSize: 12, distance: 6, offset: [0, -11] },
@@ -880,7 +899,10 @@
                 pp(gmTrend).replace('-', '') + ' over the period'),
         'Revenue-weighted gross margin, monthly, against margin at the agreed price · ' +
         (comp == null ? 'no governing agreement' : pct(comp, 1) + ' of covered lines priced to agreement') +
-        ' · trend = first three vs last three quoted months'),
+        ' · trend = first three vs last three quoted months' +
+        ((months.length - gmQSeries.filter(function (v) { return v != null; }).length) > 0
+          ? ' · months with no quoted lines are drawn as a break, not a zero'
+          : '')),
       grid: { left: 8, right: 116, top: LAST_TOP, bottom: 26, containLabel: true },
       tooltip: {
         trigger: 'axis',
@@ -992,8 +1014,13 @@
         mixArr.length === 1
           ? 'All quoted value sits in one product family'
           : mixArr[0].name + ' is ' + pct(mixArr[0].rev / rev, 0) + ' of quoted value',
-        'Quoted value by product family, USD'),
-      grid: { left: 8, right: 104, top: LAST_TOP, bottom: 22, containLabel: true },
+        'Quoted value by product family, USD · ' + usd(rev) + ' total across ' +
+        mixArr.length + ' ' + plural(mixArr.length, 'family', 'families') +
+        (mixArr[0].gm != null
+          ? ' · gross margin on ' + mixArr[0].name + ' is ' + pct(mixArr[0].gm) +
+            ', a separate measure from its share'
+          : '')),
+      grid: { left: 8, right: 132, top: LAST_TOP, bottom: 22, containLabel: true },
       tooltip: {
         trigger: 'item',
         formatter: function (p) {
@@ -1010,11 +1037,30 @@
         data: mixArr.map(function (r, i) {
           return { value: r.rev, itemStyle: { color: i === 0 ? C.evergreen : C.rain } };
         }),
+        // Rule 3.2 — the title claims a SHARE and the bars carried only dollars,
+        // so the headline figure was not readable from any mark. Every bar now
+        // carries its own share beside its value.
         label: { show: true, position: 'right', color: C.basalt, fontSize: 12,
-                 formatter: function (p) { return usd(p.value); } },
-        markPoint: cascadiaAnnotation('Gross margin on this family ' + pct(mixArr[0].gm), {
-          color: C.evergreen, coord: [mixArr[0].rev, 0], position: 'bottom', distance: 18,
-          width: 140, align: 'left' })
+                 formatter: function (p) {
+                   return usd(p.value) + '  ·  ' + pct(p.value / rev, 0);
+                 } },
+        // Rule 3.4 — this annotation sat one row BELOW the bar it describes and
+        // was tied to it by colour alone, which the rule forbids. It also read
+        // "52.0%" under a title claiming "52% of quoted value" — two unrelated
+        // metrics landing on the same number. Four of four seats on the Rule 7.4
+        // reading panel of 2026-08-02 stopped on it and asked if it was a
+        // mislabel. Now adjacent to its own bar, and named so the two figures
+        // cannot be read as one.
+        // The annotation now explains the TITLE's claim (the share) rather than
+        // introducing a second, unrelated percentage. Gross margin moved to the
+        // subtitle, where it is labelled as margin and cannot be read as the
+        // evidence for a share claim.
+        markPoint: cascadiaAnnotation(
+          mixArr[0].rev / rev >= 0.5
+            ? 'Over half the book sits in one family'
+            : 'Largest family, ' + pct(mixArr[0].rev / rev, 0) + ' of the book', {
+          color: C.evergreen, coord: [mixArr[0].rev * 0.5, 0], position: 'top', distance: 10,
+          width: 260, align: 'center' })
       }]
     });
     strip(cMix, vt);
