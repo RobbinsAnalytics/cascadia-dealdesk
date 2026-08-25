@@ -1,0 +1,20 @@
+# Line endings: normalized to LF in the repository and on checkout.
+#
+# Windows tooling rewrites files with CRLF, which makes them show as modified
+# when nothing changed. In a module repo that churn is worse than cosmetic — it
+# makes "the frozen snapshot is untouched" impossible to assert. Every blob in HEAD is already LF, so this is a policy declaration and not a rewrite — the deal-desk data freeze under data/raw/ is committed LF and stays byte-identical.
+
+* text=auto eol=lf
+
+# Binaries: never examined for line endings, never normalized.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+*.zip  binary
+*.gz   binary
+*.skill binary
