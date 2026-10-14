@@ -61,8 +61,8 @@ behave as declared; it uses a throwaway repo and takes about a second.
 skips it silently.** It is tracked here as mode `100755` for that reason. A
 non-executable copy does not error, does not warn, and passes every check that
 inspects file *contents* — the only thing that catches it is the test matrix's
-end-to-end case, which stages and commits for real. If that case fails and the
-other 49 pass, check the mode before you check the script.
+end-to-end case, which stages and commits for real. If that case fails and every
+other case passes, check the mode before you check the script.
 
 **A stale `.git/index.lock` left behind when a git process dies** is this repo's
 recurring git failure — it is one of the three things `publish-dealdesk.ps1`
